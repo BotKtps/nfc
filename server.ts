@@ -1,10 +1,10 @@
 import express from 'express';
-import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 interface Card {
   card_id: string;
@@ -40,30 +40,83 @@ export interface PlaceResult {
 }
 
 const ADMIN_PIN = '*kewQkb:#sm';
-const DB_FILE = path.join(__dirname, 'cards_db.json');
+
+function getDbFilePath(): string {
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const tmpPath = path.join('/tmp', 'cards_db.json');
+    if (!fs.existsSync(tmpPath)) {
+      try {
+        const rootPath = path.join(process.cwd(), 'cards_db.json');
+        if (fs.existsSync(rootPath)) {
+          fs.copyFileSync(rootPath, tmpPath);
+        }
+      } catch (e) {
+        console.warn('Could not copy cards_db to /tmp:', e);
+      }
+    }
+    return tmpPath;
+  }
+  return path.join(process.cwd(), 'cards_db.json');
+}
 
 function loadCards(): Map<string, Card> {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = fs.readFileSync(DB_FILE, 'utf-8');
-      const arr: Card[] = JSON.parse(data);
-      return new Map(arr.map(c => [c.card_id, c]));
+  const possiblePaths = [
+    getDbFilePath(),
+    path.join(__dirname, 'cards_db.json'),
+    path.join(process.cwd(), 'cards_db.json'),
+  ];
+
+  for (const p of possiblePaths) {
+    try {
+      if (fs.existsSync(p)) {
+        const data = fs.readFileSync(p, 'utf-8');
+        const arr: Card[] = JSON.parse(data);
+        if (Array.isArray(arr) && arr.length > 0) {
+          return new Map(arr.map(c => [c.card_id, c]));
+        }
+      }
+    } catch (e) {
+      console.error(`Error loading DB from ${p}:`, e);
     }
-  } catch (e) {
-    console.error('Error loading DB:', e);
   }
 
-  const defaultCards = new Map<string, Card>();
+  const defaultCards = new Map<string, Card>([
+    [
+      'CARD-001',
+      {
+        card_id: 'CARD-001',
+        business_name: 'Ayam Geprek Kimo-Kimo',
+        gmaps_url: 'https://search.google.com/local/writereview?placeid=ChIJXxIA0RaB5i0ReoMyHzOBqH4&review=5',
+        is_active: true,
+        scan_count: 3,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    ],
+    [
+      'CARD-002',
+      {
+        card_id: 'CARD-002',
+        business_name: null,
+        gmaps_url: null,
+        is_active: false,
+        scan_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+    ]
+  ]);
   saveCards(defaultCards);
   return defaultCards;
 }
 
 function saveCards(cardsMap: Map<string, Card>) {
   try {
+    const p = getDbFilePath();
     const arr = Array.from(cardsMap.values());
-    fs.writeFileSync(DB_FILE, JSON.stringify(arr, null, 2), 'utf-8');
+    fs.writeFileSync(p, JSON.stringify(arr, null, 2), 'utf-8');
   } catch (e) {
-    console.error('Error saving DB:', e);
+    console.error('Error saving DB (continuing in-memory):', e);
   }
 }
 
@@ -388,6 +441,24 @@ function checkAdminAuth(req: express.Request, res: express.Response, next: expre
 const app = express();
 app.use(express.json());
 
+// Normalize rewritten paths from Vercel Serverless
+app.use((req, res, next) => {
+  const target = req.originalUrl || req.url;
+  if (
+    req.url.startsWith('/cards') ||
+    req.url.startsWith('/find-place') ||
+    req.url.startsWith('/admin') ||
+    req.url.startsWith('/resolve-maps')
+  ) {
+    req.url = '/api' + req.url;
+  } else if (target && target.startsWith('/r/') && !req.url.startsWith('/r/')) {
+    req.url = target;
+  } else if (target && target.startsWith('/api/') && !req.url.startsWith('/api/')) {
+    req.url = target;
+  }
+  next();
+});
+
 // Public Google Place ID & CID Finder API (Single Place)
 app.post('/api/find-place', async (req, res) => {
   const { input } = req.body;
@@ -670,26 +741,30 @@ app.get(['/setup/:cardId', '/admn-log', '/card/admn-log', '/place-id-finder'], (
   next();
 });
 
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-  });
-  const PORT = process.env.PORT || 3000;
-  app.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`TapUlasan production server running on port ${PORT}`);
-  });
-} else {
-  createViteServer({
-    server: { middlewareMode: true },
-    appType: 'spa',
-  }).then(vite => {
-    app.use(vite.middlewares);
+if (!process.env.VERCEL && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.join(__dirname, 'dist')));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+    });
     const PORT = process.env.PORT || 3000;
     app.listen(Number(PORT), '0.0.0.0', () => {
-      console.log(`TapUlasan dev server running on http://0.0.0.0:${PORT}`);
+      console.log(`TapUlasan production server running on port ${PORT}`);
     });
-  });
+  } else {
+    import('vite').then(({ createServer: createViteServer }) => {
+      createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa',
+      }).then(vite => {
+        app.use(vite.middlewares);
+        const PORT = process.env.PORT || 3000;
+        app.listen(Number(PORT), '0.0.0.0', () => {
+          console.log(`TapUlasan dev server running on http://0.0.0.0:${PORT}`);
+        });
+      });
+    });
+  }
 }
 
 export default app;

@@ -1,29 +1,19 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
-      }
-    }
-  ],
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/server.ts"
+      "destination": "/api"
     },
     {
       "source": "/r/(.*)",
-      "destination": "/server.ts"
+      "destination": "/api"
     },
     {
-      "source": "/setup/(.*)",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/((?!api/|r/|setup/).*)",
+      "source": "/(.*)",
       "destination": "/index.html"
     }
   ]
