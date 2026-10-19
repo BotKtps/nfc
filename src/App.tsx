@@ -67,15 +67,35 @@ export default function App() {
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Print view state
+  // Print & Selection state
   const [printQrImages, setPrintQrImages] = useState<Record<string, string>>({});
   const [generatingPrintQrs, setGeneratingPrintQrs] = useState(false);
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [printSource, setPrintSource] = useState<'all' | 'selected'>('all');
+
+  const toggleSelectCard = (cardId: string) => {
+    setSelectedCardIds(prev =>
+      prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectedCardIds.length === filteredCards.length) {
+      setSelectedCardIds([]);
+    } else {
+      setSelectedCardIds(filteredCards.map(c => c.card_id));
+    }
+  };
 
   useEffect(() => {
     if (currentView === 'print_grid' && cards.length > 0) {
       setGeneratingPrintQrs(true);
+      const targetCards = printSource === 'selected' && selectedCardIds.length > 0
+        ? cards.filter(c => selectedCardIds.includes(c.card_id))
+        : cards;
+
       Promise.all(
-        cards.map(async (card) => {
+        targetCards.map(async (card) => {
           const shortUrl = `${window.location.origin}/r/${card.card_id}`;
           try {
             const dataUrl = await QRCode.toDataURL(shortUrl, { width: 250, margin: 1 });
@@ -90,7 +110,7 @@ export default function App() {
         setGeneratingPrintQrs(false);
       });
     }
-  }, [currentView, cards]);
+  }, [currentView, cards, printSource, selectedCardIds]);
 
   const fetchCards = async () => {
     try {
@@ -125,13 +145,13 @@ export default function App() {
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (adminPin === 'admin123') {
+    if (adminPin === '*kewQkb:#sm') {
       setIsAdminAuthenticated(true);
       setCurrentView('admin_dashboard');
       setAdminLoginError('');
       setAdminPin('');
     } else {
-      setAdminLoginError('PIN Admin salah. Gunakan: admin123');
+      setAdminLoginError('PIN Admin salah.');
     }
   };
 
@@ -241,6 +261,19 @@ export default function App() {
     }
   };
 
+  const handleDownloadQr = async (cardId: string) => {
+    const shortUrl = `${window.location.origin}/r/${cardId}`;
+    try {
+      const dataUrl = await QRCode.toDataURL(shortUrl, { width: 600, margin: 2 });
+      const link = document.createElement('a');
+      link.download = `QR-TapUlasan-${cardId}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err) {
+      console.error('Download QR error:', err);
+    }
+  };
+
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -264,7 +297,7 @@ export default function App() {
             <Radio className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-lg font-bold tracking-tight text-slate-900">TapUlasan</h1>
+            <h1 className="text-lg font-bold tracking-tight text-slate-900">TapUlasan BPP</h1>
             <p className="text-xs text-slate-500">Platform Kartu Ulasan NFC &amp; Barcode Mandiri</p>
           </div>
         </div>
@@ -282,11 +315,14 @@ export default function App() {
           {currentView === 'admin_dashboard' ? (
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCurrentView('print_grid')}
+                onClick={() => {
+                  setPrintSource('all');
+                  setCurrentView('print_grid');
+                }}
                 className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-4 py-2 rounded-xl text-xs sm:text-sm transition shadow-sm flex items-center gap-1.5"
               >
                 <Printer className="w-4 h-4" />
-                <span>Cetak QR Grid</span>
+                <span>Pustaka Cetak QR</span>
               </button>
               <button
                 onClick={() => setBatchModalOpen(true)}
@@ -318,64 +354,48 @@ export default function App() {
         </div>
       </header>
 
-      {/* VIEW 1: LANDING / HOME SELECTOR */}
+      {/* VIEW 1: LANDING / INTRODUCTORY HOME */}
       {currentView === 'landing' && (
-        <main className="flex-1 max-w-5xl mx-auto px-4 py-16 flex flex-col items-center justify-center text-center">
-          <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold px-3 py-1 rounded-full mb-6">
-            <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-            <span>Solusi Pintar Kartu Ulasan Bintang 5 Google Maps</span>
+        <main className="flex-1 max-w-4xl mx-auto px-4 py-20 flex flex-col items-center justify-center text-center">
+          <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-xs">
+            <Sparkles className="w-4 h-4 text-amber-600" />
+            <span>Platform Resmi TapUlasan BPP — NFC &amp; QR Code Ulasan Bintang 5</span>
           </div>
-          <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight max-w-2xl mb-4">
-            Tingkatkan Reputasi Bisnis Anda dengan 1-Tap NFC &amp; QR Code
+
+          <h2 className="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight max-w-3xl mb-6">
+            Ubah Sentuhan Pelanggan Menjadi Reputasi Bintang 5 di Google Maps
           </h2>
-          <p className="text-slate-600 max-w-xl text-sm sm:text-base mb-10">
-            Sistem mandiri (self-service) untuk vendor dan pemilik bisnis. Pelanggan cukup scan kartu, isi data bisnis, dan langsung terhubung ke ulasan bintang 5 Google Maps secara otomatis.
+
+          <p className="text-slate-600 max-w-2xl text-base sm:text-lg mb-12 leading-relaxed">
+            <strong className="text-slate-900">TapUlasan BPP</strong> adalah sistem kartu pintar NFC dan QR Code mandiri yang dirancang khusus untuk bisnis. Setiap kartu memiliki web pribadi mandiri (*self-service*), memungkinkan pemilik usaha mengatur tautan ulasan Google Maps mereka sendiri secara instan tanpa ribet.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-2xl">
-            {/* Admin Portal Card */}
-            <div 
-              onClick={() => setCurrentView(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login')}
-              className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-300 transition cursor-pointer text-left group flex flex-col justify-between"
-            >
-              <div>
-                <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center font-bold mb-4 group-hover:bg-indigo-600 group-hover:text-white transition">
-                  <Lock className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Dashboard Admin</h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Kelola batch kartu NFC, pantau status bisnis, cetak QR code, dan statistik scan terpusat.
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-indigo-600 font-semibold text-xs group-hover:translate-x-1 transition">
-                <span>{isAdminAuthenticated ? 'Buka Dashboard' : 'Login Admin'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-3xl mb-12 text-left">
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="w-10 h-10 bg-amber-100 text-amber-800 rounded-xl flex items-center justify-center font-bold text-lg">⚡</div>
+              <h3 className="font-bold text-slate-900 text-sm">1-Tap NFC &amp; QR Code</h3>
+              <p className="text-xs text-slate-500">Pelanggan cukup ketuk atau scan kartu dengan HP untuk langsung membuka form ulasan bintang 5.</p>
             </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="w-10 h-10 bg-indigo-100 text-indigo-800 rounded-xl flex items-center justify-center font-bold text-lg">⚙️</div>
+              <h3 className="font-bold text-slate-900 text-sm">Web Setup Mandiri</h3>
+              <p className="text-xs text-slate-500">Setiap kartu memiliki tautan web pribadi yang dapat diatur sendiri oleh pemilik bisnis.</p>
+            </div>
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+              <div className="w-10 h-10 bg-emerald-100 text-emerald-800 rounded-xl flex items-center justify-center font-bold text-lg">🖨️</div>
+              <h3 className="font-bold text-slate-900 text-sm">Pustaka Cetak A4</h3>
+              <p className="text-xs text-slate-500">Admin dapat memilih dan mengekspor galeri kartu ke dalam format cetak A4 profesional.</p>
+            </div>
+          </div>
 
-            {/* Client Setup / Simulator Card */}
-            <div 
-              onClick={() => {
-                setSetupCardId('CARD-001');
-                setCurrentView('client_setup');
-                setSetupSuccessData(null);
-              }}
-              className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-amber-300 transition cursor-pointer text-left group flex flex-col justify-between"
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md">
+            <button
+              onClick={() => setCurrentView(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login')}
+              className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-8 rounded-2xl transition text-sm shadow-md flex items-center justify-center gap-2"
             >
-              <div>
-                <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-bold mb-4 group-hover:bg-amber-500 group-hover:text-slate-950 transition">
-                  <Smartphone className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Simulasi Setup Kartu</h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Coba halaman web pribadi aktivasi kartu pelanggan (Self-Service Setup Kartu CARD-001).
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-amber-600 font-semibold text-xs group-hover:translate-x-1 transition">
-                <span>Mulai Aktivasi</span>
-                <ArrowRight className="w-4 h-4" />
-              </div>
-            </div>
+              <Lock className="w-4 h-4 text-amber-400" />
+              <span>Masuk Admin Dashboard</span>
+            </button>
           </div>
         </main>
       )}
@@ -496,6 +516,31 @@ export default function App() {
             </div>
           </div>
 
+          {/* Selection Toolbar Banner */}
+          {!loading && cards.length > 0 && (
+            <div className="flex items-center justify-between bg-white px-6 py-3 rounded-2xl border border-slate-200 shadow-xs">
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={selectedCardIds.length > 0 && selectedCardIds.length === filteredCards.length}
+                  onChange={handleSelectAll}
+                  className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <span className="text-xs sm:text-sm font-medium text-slate-700">
+                  Pilih Semua ({selectedCardIds.length} dari {filteredCards.length} kartu dipilih)
+                </span>
+              </div>
+              {selectedCardIds.length > 0 && (
+                <button
+                  onClick={() => setSelectedCardIds([])}
+                  className="text-xs text-rose-600 hover:text-rose-800 font-medium underline"
+                >
+                  Hapus Pilihan
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Business List: Responsive Mobile Stacked Cards & Desktop Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
             {loading ? (
@@ -508,12 +553,21 @@ export default function App() {
                 <div className="block md:hidden divide-y divide-slate-100">
                   {filteredCards.map((card) => {
                     const shortLink = `${window.location.origin}/r/${card.card_id}`;
+                    const isSelected = selectedCardIds.includes(card.card_id);
                     return (
-                      <div key={card.card_id} className="p-4 space-y-3">
+                      <div key={card.card_id} className={`p-4 space-y-3 transition ${isSelected ? 'bg-indigo-50/40' : ''}`}>
                         <div className="flex items-center justify-between">
-                          <span className="font-mono font-bold text-slate-900 text-sm bg-slate-100 px-2.5 py-1 rounded-lg">
-                            {card.card_id}
-                          </span>
+                          <div className="flex items-center gap-2.5">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleSelectCard(card.card_id)}
+                              className="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            />
+                            <span className="font-mono font-bold text-slate-900 text-sm bg-slate-100 px-2.5 py-1 rounded-lg">
+                              {card.card_id}
+                            </span>
+                          </div>
                           {card.is_active ? (
                             <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
                               Aktif ({card.scan_count} scan)
@@ -594,7 +648,15 @@ export default function App() {
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        <th className="py-4 px-6">ID Kartu</th>
+                        <th className="py-4 px-4 w-12 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedCardIds.length > 0 && selectedCardIds.length === filteredCards.length}
+                            onChange={handleSelectAll}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                          />
+                        </th>
+                        <th className="py-4 px-4">ID Kartu</th>
                         <th className="py-4 px-6">Nama Bisnis</th>
                         <th className="py-4 px-6">Link Google Maps (Ulasan Bintang 5)</th>
                         <th className="py-4 px-6 text-right">Aksi</th>
@@ -603,9 +665,18 @@ export default function App() {
                     <tbody className="divide-y divide-slate-100 text-sm">
                       {filteredCards.map((card) => {
                         const shortLink = `${window.location.origin}/r/${card.card_id}`;
+                        const isSelected = selectedCardIds.includes(card.card_id);
                         return (
-                          <tr key={card.card_id} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-4 px-6 font-mono font-bold text-slate-900 whitespace-nowrap">
+                          <tr key={card.card_id} className={`hover:bg-slate-50/80 transition-colors ${isSelected ? 'bg-indigo-50/40' : ''}`}>
+                            <td className="py-4 px-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectCard(card.card_id)}
+                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                              />
+                            </td>
+                            <td className="py-4 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
                               {card.card_id}
                             </td>
                             <td className="py-4 px-6 font-semibold text-slate-900">
@@ -680,44 +751,90 @@ export default function App() {
               </>
             )}
           </div>
+
+          {/* Floating Selection Action Bar */}
+          {selectedCardIds.length > 0 && currentView === 'admin_dashboard' && (
+            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 z-50 animate-in fade-in slide-in-from-bottom-5 duration-200 border border-slate-700">
+              <div className="flex items-center gap-2">
+                <span className="w-6 h-6 bg-amber-500 text-slate-950 rounded-full flex items-center justify-center font-bold text-xs">
+                  {selectedCardIds.length}
+                </span>
+                <span className="text-xs sm:text-sm font-medium">Kartu Dipilih</span>
+              </div>
+              <div className="h-4 w-px bg-slate-700" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    setPrintSource('selected');
+                    setCurrentView('print_grid');
+                  }}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs transition flex items-center gap-1.5"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Buka Pustaka Cetak ({selectedCardIds.length})</span>
+                </button>
+                <button
+                  onClick={() => setSelectedCardIds([])}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium px-3 py-2 rounded-xl text-xs transition"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          )}
         </main>
       )}
 
-      {/* VIEW: PRINT QR GRID LAYOUT (A4 OPTIMIZED) */}
+      {/* VIEW: PRINTABLE QR LIBRARY & A4 GALLERY GRID */}
       {currentView === 'print_grid' && (
         <main className="flex-1 max-w-5xl mx-auto px-4 py-8 w-full">
           {/* Action bar (hidden on print) */}
-          <div className="print:hidden flex items-center justify-between mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-xs">
+          <div className="print:hidden flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 mb-6 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
             <div>
-              <h2 className="text-lg font-bold text-slate-900">Layout Cetak QR A4</h2>
-              <p className="text-xs text-slate-500">Tata letak proporsional siap cetak untuk stiker atau kartu bisnis NFC.</p>
+              <h2 className="text-lg font-bold text-slate-900">Pustaka Cetak QR &amp; Galeri Galat</h2>
+              <p className="text-xs text-slate-500">Pilih kartu untuk dicetak massal atau ekspor ke dalam galeri A4 profesional.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex bg-slate-100 p-1 rounded-xl">
+                <button
+                  onClick={() => setPrintSource('all')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${printSource === 'all' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                  Semua ({cards.length})
+                </button>
+                <button
+                  onClick={() => setPrintSource('selected')}
+                  disabled={selectedCardIds.length === 0}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${printSource === 'selected' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'} ${selectedCardIds.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  Terpilih ({selectedCardIds.length})
+                </button>
+              </div>
               <button
                 onClick={() => setCurrentView('admin_dashboard')}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-xl transition"
               >
-                Kembali ke Dashboard
+                Kembali
               </button>
               <button
                 onClick={() => window.print()}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-sm"
               >
                 <Printer className="w-4 h-4" />
-                <span>Cetak / Print A4</span>
+                <span>Cetak / Ekspor PDF</span>
               </button>
             </div>
           </div>
 
-          {/* A4 Grid Container */}
+          {/* A4 Gallery Grid Container */}
           <div className="bg-white p-6 sm:p-10 rounded-3xl border border-slate-200 shadow-sm print:shadow-none print:border-none print:p-0">
             {generatingPrintQrs ? (
-              <div className="p-16 text-center text-slate-400">Menyiapkan QR Code untuk dicetak...</div>
-            ) : cards.length === 0 ? (
-              <div className="p-16 text-center text-slate-400">Belum ada kartu untuk dicetak.</div>
+              <div className="p-16 text-center text-slate-400">Menyiapkan galeri QR Code untuk dicetak...</div>
+            ) : (printSource === 'selected' ? cards.filter(c => selectedCardIds.includes(c.card_id)) : cards).length === 0 ? (
+              <div className="p-16 text-center text-slate-400">Tidak ada kartu yang dipilih untuk dicetak. Silakan pilih kartu dari dashboard terlebih dahulu.</div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 print:grid-cols-3 print:gap-4">
-                {cards.map((card) => (
+                {(printSource === 'selected' ? cards.filter(c => selectedCardIds.includes(c.card_id)) : cards).map((card) => (
                   <div key={card.card_id} className="border-2 border-dashed border-slate-300 rounded-2xl p-5 text-center flex flex-col items-center justify-between bg-white print:border-slate-400 print:p-4 break-inside-avoid">
                     <div className="w-full flex items-center justify-between mb-2">
                       <span className="text-xs font-extrabold tracking-wider text-slate-900">TAPULASAN</span>
@@ -796,11 +913,18 @@ export default function App() {
 
                 <div className="pt-2 flex gap-3">
                   <button
+                    onClick={() => handleDownloadQr(setupSuccessData.card_id)}
+                    className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-sm"
+                  >
+                    <QrCode className="w-4 h-4" />
+                    <span>Download QR Code</span>
+                  </button>
+                  <button
                     onClick={() => {
                       setSetupSuccessData(null);
                       setCurrentView(isAdminAuthenticated ? 'admin_dashboard' : 'landing');
                     }}
-                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-sm transition shadow-sm"
+                    className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 rounded-xl text-xs transition shadow-sm"
                   >
                     Selesai &amp; Kembali
                   </button>

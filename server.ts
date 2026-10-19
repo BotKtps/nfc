@@ -249,7 +249,7 @@ app.get('/r/:cardId', (req, res) => {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Kartu Tidak Ditemukan - TapUlasan</title>
+        <title>Kartu Tidak Ditemukan - TapUlasan BPP</title>
         <script src="https://cdn.tailwindcss.com"></script>
       </head>
       <body class="bg-slate-50 flex items-center justify-center min-h-screen p-4">
@@ -273,30 +273,7 @@ app.get('/r/:cardId', (req, res) => {
   cardsDB.set(cardId, card);
   saveCards(cardsDB);
 
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="id">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Ulasan Google Maps — ${card.business_name || 'TapUlasan'}</title>
-      <script src="https://cdn.tailwindcss.com"></script>
-    </head>
-    <body class="bg-slate-900 text-white flex items-center justify-center min-h-screen p-4 font-sans">
-      <div class="bg-slate-800 rounded-3xl p-8 max-w-md w-full text-center border border-slate-700 shadow-2xl">
-        <div class="w-16 h-16 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl font-bold shadow-inner">⭐</div>
-        <h1 class="text-2xl font-extrabold mb-2">${card.business_name}</h1>
-        <p class="text-slate-300 text-sm mb-6">Tekan tombol di bawah untuk memberikan ulasan bintang 5 di Google Maps.</p>
-        <a href="${card.gmaps_url}" target="_blank" rel="noopener noreferrer" class="block w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold py-4 px-6 rounded-2xl transition text-base shadow-xl shadow-amber-500/20 mb-4">
-          Buka Ulasan Google Maps (Bintang 5) ⭐
-        </a>
-        <p class="text-[11px] text-slate-400">
-          Pastikan Anda sudah login ke akun Google di browser HP Anda untuk memberikan ulasan.
-        </p>
-      </div>
-    </body>
-    </html>
-  `);
+  return res.redirect(302, card.gmaps_url);
 });
 
 if (process.env.NODE_ENV !== 'production') {
