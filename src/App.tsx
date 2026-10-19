@@ -35,18 +35,9 @@ import {
   Download,
   Trash2,
   RotateCcw,
-  Compass,
-  FileCode2,
-  Code2,
-  CheckCheck,
-  BarChart3,
-  Globe2,
-  Share2,
-  ArrowUpRight,
-  Info,
-  Building2,
-  FileSpreadsheet,
-  Calculator
+  Palette,
+  CreditCard,
+  Building2
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -60,49 +51,29 @@ interface Card {
   updated_at: string;
 }
 
-interface PlaceResult {
-  input: string;
-  name: string;
-  category: string;
-  address: string;
-  place_id: string;
-  cid_decimal: string;
-  cid_hex: string;
-  fid: string;
-  maps_url_cid: string;
-  maps_url_place_id: string;
-  review_url: string;
-  lat: number | string;
-  lng: number | string;
-  business_status: string;
-  lookups_left: number;
-  snippets: {
-    curl: string;
-    maps_embed: string;
-    schema_json: string;
-  };
-}
-
 export default function App() {
-  // Navigation & View state: 'landing' | 'place_finder' | 'client_setup' | 'admin_login' | 'admin_dashboard' | 'print_grid'
-  const [currentView, setCurrentView] = useState<'landing' | 'place_finder' | 'client_setup' | 'admin_login' | 'admin_dashboard' | 'print_grid'>('landing');
+  // Navigation & View state: 'landing' | 'print_design' | 'client_setup' | 'admin_login' | 'admin_dashboard' | 'print_grid'
+  const [currentView, setCurrentView] = useState<'landing' | 'print_design' | 'client_setup' | 'admin_login' | 'admin_dashboard' | 'print_grid'>('landing');
 
-  // Place ID Finder State
-  const [finderMode, setFinderMode] = useState<'single' | 'bulk'>('single');
-  const [finderInput, setFinderInput] = useState('https://maps.app.goo.gl/yvPYFXEJcykFKrDYA');
-  const [bulkInput, setBulkInput] = useState('https://maps.app.goo.gl/yvPYFXEJcykFKrDYA\nChIJXxIA0RaB5i0ReoMyHzOBqH4\n9126686701433029498');
-  const [finderLoading, setFinderLoading] = useState(false);
-  const [finderResult, setFinderResult] = useState<PlaceResult | null>(null);
-  const [bulkResults, setBulkResults] = useState<PlaceResult[]>([]);
-  const [finderError, setFinderError] = useState('');
-  const [devSnippetTab, setDevSnippetTab] = useState<'curl' | 'embed' | 'schema'>('curl');
-  const [activeFaq, setActiveFaq] = useState<number | null>(null);
+  // ==========================================
+  // FITUR: PRINT DESIGN QRIS & NFC OTOMATIS
+  // ==========================================
+  const [printTemplate, setPrintTemplate] = useState<'standee_review' | 'standee_dual' | 'nfc_card' | 'sticker'>('standee_review');
+  const [printTheme, setPrintTheme] = useState<'gold' | 'cyan' | 'white' | 'qris_red'>('gold');
+  const [printBusinessName, setPrintBusinessName] = useState('Ayam Geprek Kimo-Kimo');
+  const [printTagline, setPrintTagline] = useState('Ulasan Bintang 5 Anda Sangat Berarti Bagi Kami');
+  const [printReviewUrl, setPrintReviewUrl] = useState('https://search.google.com/local/writereview?placeid=ChIJXxIA0RaB5i0ReoMyHzOBqH4');
+  const [printCtaText, setPrintCtaText] = useState('Dekatkan HP Anda di Sini atau Scan QR');
+  const [printMerchantQris, setPrintMerchantQris] = useState('AYAM GEPREK KIMO-KIMO');
+  const [printNmid, setPrintNmid] = useState('NMID: ID1020304050607');
+  const [printPaperSize, setPrintPaperSize] = useState<'a6' | 'a5' | 'cr80' | 'sticker'>('a6');
+  const [printCopiesPerPage, setPrintCopiesPerPage] = useState<1 | 2 | 4>(1);
 
-  // Modals for Place Finder Actions
-  const [qrModalPlace, setQrModalPlace] = useState<PlaceResult | null>(null);
-  const [qrPlaceDataUrl, setQrPlaceDataUrl] = useState<string>('');
-  const [auditModalOpen, setAuditModalOpen] = useState(false);
-  const [rankModalOpen, setRankModalOpen] = useState(false);
+  // High-res QR Data URLs for Print Design
+  const [reviewQrDataUrl, setReviewQrDataUrl] = useState<string>('');
+  const [qrisQrDataUrl, setQrisQrDataUrl] = useState<string>('');
+  const [isGeneratingPrintQr, setIsGeneratingPrintQr] = useState(false);
+  const [isDownloadingImage, setIsDownloadingImage] = useState(false);
 
   // Admin Auth state
   const [adminPin, setAdminPin] = useState('');
@@ -116,7 +87,7 @@ export default function App() {
   const [adminSearchTerm, setAdminSearchTerm] = useState('');
   const [adminFilter, setAdminFilter] = useState<'all' | 'active' | 'unclaimed'>('all');
 
-  // Customer Card Setup / Activation state
+  // Customer Card Setup / Activation state (accessible via secret link)
   const [setupCardIdInput, setSetupCardIdInput] = useState('');
   const [setupCardData, setSetupCardData] = useState<Card | null>(null);
   const [setupCardLoading, setSetupCardLoading] = useState(false);
@@ -142,11 +113,9 @@ export default function App() {
   const [selectedCardForQR, setSelectedCardForQR] = useState<Card | null>(null);
   const [qrModalDataUrl, setQrModalDataUrl] = useState<string>('');
 
-  // Print & Selection state (Admin)
-  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  // Print & Selection state (Admin sticker sheet)
   const [printQrImages, setPrintQrImages] = useState<Record<string, string>>({});
   const [generatingPrintQrs, setGeneratingPrintQrs] = useState(false);
-  const [printSource, setPrintSource] = useState<'all' | 'selected'>('all');
 
   // Interactive review growth calculator (Landing page)
   const [dailyCustomers, setDailyCustomers] = useState(60);
@@ -160,6 +129,44 @@ export default function App() {
     setCopiedKey(key);
     setTimeout(() => setCopiedKey(null), 2500);
   };
+
+  // Generate Review QR and QRIS QR code whenever inputs change
+  useEffect(() => {
+    let isCancelled = false;
+    const generateQrs = async () => {
+      setIsGeneratingPrintQr(true);
+      try {
+        const qrReview = await QRCode.toDataURL(printReviewUrl || 'https://google.com', {
+          width: 500,
+          margin: 1,
+          color: {
+            dark: printTheme === 'white' ? '#000000' : (printTheme === 'gold' ? '#000000' : '#000000'),
+            light: '#ffffff',
+          },
+        });
+
+        // Dummy/Simulated QRIS payload with national merchant standards
+        const qrisPayload = `00020101021126580016ID.CO.QRIS.WWW01189360099900000000000215ID10203040506075204581253033605802ID59${(printMerchantQris || 'MERCHANT').length.toString().padStart(2, '0')}${printMerchantQris || 'MERCHANT'}6007JAKARTA6105123406304ABCD`;
+        const qrQris = await QRCode.toDataURL(qrisPayload, {
+          width: 500,
+          margin: 1,
+          color: { dark: '#000000', light: '#ffffff' },
+        });
+
+        if (!isCancelled) {
+          setReviewQrDataUrl(qrReview);
+          setQrisQrDataUrl(qrQris);
+        }
+      } catch (err) {
+        console.error('Failed to generate print QR:', err);
+      } finally {
+        if (!isCancelled) setIsGeneratingPrintQr(false);
+      }
+    };
+
+    generateQrs();
+    return () => { isCancelled = true; };
+  }, [printReviewUrl, printMerchantQris, printTheme]);
 
   // Check URL on initial load for routing
   useEffect(() => {
@@ -180,103 +187,11 @@ export default function App() {
       const cardId = path.startsWith('/setup/') ? path.replace('/setup/', '').trim() : cardIdFromQuery || '';
       if (cardId) {
         setSetupCardIdInput(cardId);
-        loadCustomerCard(cardId);
         setCurrentView('client_setup');
+        loadCustomerCard(cardId);
       }
-    } else if (path === '/place-id-finder' || urlParams.get('tool') === 'place-finder') {
-      setCurrentView('place_finder');
-      handleFindPlace('https://maps.app.goo.gl/yvPYFXEJcykFKrDYA');
     }
   }, []);
-
-  // Handle Find Place (Single)
-  const handleFindPlace = async (targetInput?: string) => {
-    const query = (targetInput ?? finderInput).trim();
-    if (!query) {
-      setFinderError('Silakan masukkan nama bisnis, link Google Maps, Place ID, atau CID.');
-      return;
-    }
-    setFinderError('');
-    setFinderLoading(true);
-
-    try {
-      const res = await fetch('/api/find-place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ input: query })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setFinderResult(data);
-      } else {
-        setFinderError(data.error || 'Gagal mencari Google Place ID untuk lokasi tersebut.');
-      }
-    } catch (err: any) {
-      setFinderError('Terjadi kesalahan koneksi saat mencari Place ID.');
-    } finally {
-      setFinderLoading(false);
-    }
-  };
-
-  // Handle Bulk Lookup
-  const handleBulkLookup = async () => {
-    const lines = bulkInput
-      .split('\n')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
-
-    if (lines.length === 0) {
-      setFinderError('Masukkan setidaknya 1 link atau Place ID untuk bulk lookup.');
-      return;
-    }
-    if (lines.length > 20) {
-      setFinderError('Maksimal 20 lokasi dalam 1 kali proses.');
-      return;
-    }
-
-    setFinderError('');
-    setFinderLoading(true);
-
-    try {
-      const res = await fetch('/api/find-place/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputs: lines })
-      });
-      const data = await res.json();
-      if (res.ok && data.success) {
-        setBulkResults(data.results || []);
-      } else {
-        setFinderError(data.error || 'Gagal memproses bulk lookup.');
-      }
-    } catch (err) {
-      setFinderError('Terjadi kesalahan koneksi saat memproses bulk lookup.');
-    } finally {
-      setFinderLoading(false);
-    }
-  };
-
-  // Generate Review QR code for place result
-  const openPlaceQrModal = async (place: PlaceResult) => {
-    setQrModalPlace(place);
-    try {
-      const url = await QRCode.toDataURL(place.review_url, {
-        width: 480,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' }
-      });
-      setQrPlaceDataUrl(url);
-    } catch (err) {
-      console.error('QR generation error:', err);
-    }
-  };
-
-  // Apply place details directly to TapUlasan Card Setup
-  const applyPlaceToCardSetup = (place: PlaceResult) => {
-    setSetupBusinessName(place.name);
-    setSetupMapsInput(place.review_url);
-    setCurrentView('client_setup');
-  };
 
   // Customer Card Setup: Load Card Details
   const loadCustomerCard = async (cardId: string) => {
@@ -450,15 +365,18 @@ export default function App() {
 
   // Admin: Reset Card
   const handleResetCard = async (cardId: string) => {
-    if (!confirm(`Reset kartu ${cardId} ke status kosong belum teraktivasi?`)) return;
     const pin = adminPin || sessionStorage.getItem('tapulasan_admin_pin') || '';
+    if (!pin) return;
+    if (!confirm(`Yakin ingin mereset kartu ${cardId} ke kondisi belum diatur?`)) return;
+
     try {
       const res = await fetch(`/api/cards/${cardId}/reset`, {
         method: 'POST',
         headers: { 'x-admin-pin': pin },
       });
+
       if (res.ok) {
-        fetchAdminCards(pin);
+        await fetchAdminCards(pin);
       }
     } catch (e) {
       console.error('Reset failed:', e);
@@ -467,53 +385,51 @@ export default function App() {
 
   // Admin: Delete Card
   const handleDeleteCard = async (cardId: string) => {
-    if (!confirm(`Hapus permanen kartu ${cardId} dari database?`)) return;
     const pin = adminPin || sessionStorage.getItem('tapulasan_admin_pin') || '';
+    if (!pin) return;
+    if (!confirm(`Hapus permanen kartu ${cardId} dari database?`)) return;
+
     try {
       const res = await fetch(`/api/cards/${cardId}`, {
         method: 'DELETE',
         headers: { 'x-admin-pin': pin },
       });
+
       if (res.ok) {
-        fetchAdminCards(pin);
+        await fetchAdminCards(pin);
       }
     } catch (e) {
       console.error('Delete failed:', e);
     }
   };
 
-  // Admin: Open Single QR Modal
+  // Open single card QR modal
   const openCardQrModal = async (card: Card) => {
     setSelectedCardForQR(card);
     const redirectUrl = `${window.location.origin}/r/${card.card_id}`;
     try {
-      const dataUrl = await QRCode.toDataURL(redirectUrl, {
+      const url = await QRCode.toDataURL(redirectUrl, {
         width: 480,
         margin: 2,
         color: { dark: '#000000', light: '#ffffff' },
       });
-      setQrModalDataUrl(dataUrl);
+      setQrModalDataUrl(url);
     } catch (err) {
-      console.error(err);
+      console.error('QR generation error:', err);
     }
   };
 
-  // Admin: Prepare Print Grid
-  const preparePrintGrid = async (source: 'all' | 'selected') => {
-    setPrintSource(source);
+  // Prepare Printable Grid (Admin QR Stickers)
+  const preparePrintGrid = async () => {
     setGeneratingPrintQrs(true);
     setCurrentView('print_grid');
-
-    const cardsToPrint = source === 'selected'
-      ? adminCards.filter(c => selectedCardIds.includes(c.card_id))
-      : adminCards;
-
     const qrMap: Record<string, string> = {};
-    for (const card of cardsToPrint) {
+
+    for (const card of adminCards) {
       try {
         const redirectUrl = `${window.location.origin}/r/${card.card_id}`;
         qrMap[card.card_id] = await QRCode.toDataURL(redirectUrl, {
-          width: 256,
+          width: 320,
           margin: 1,
           color: { dark: '#000000', light: '#ffffff' },
         });
@@ -524,6 +440,125 @@ export default function App() {
 
     setPrintQrImages(qrMap);
     setGeneratingPrintQrs(false);
+  };
+
+  // High-Resolution Standee/Card Image Download (300 DPI Canvas)
+  const handleDownloadHighResImage = async () => {
+    setIsDownloadingImage(true);
+    try {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Canvas dimensions for 300 DPI crisp print
+      let width = 1240;
+      let height = 1754; // A6 proportion approx
+
+      if (printTemplate === 'nfc_card') {
+        width = 1012; // CR80 proportion (85.6mm x 54mm)
+        height = 638;
+      } else if (printTemplate === 'sticker') {
+        width = 1200;
+        height = 1200;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      // Background styling
+      if (printTheme === 'white') {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+      } else if (printTheme === 'cyan') {
+        const grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, '#070a12');
+        grad.addColorStop(1, '#0e1726');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+      } else if (printTheme === 'qris_red') {
+        ctx.fillStyle = '#f8fafc';
+        ctx.fillRect(0, 0, width, height);
+        // Header red banner
+        ctx.fillStyle = '#b91c1c';
+        ctx.fillRect(0, 0, width, height * 0.18);
+      } else {
+        // Obsidian Gold Luxury
+        const grad = ctx.createLinearGradient(0, 0, 0, height);
+        grad.addColorStop(0, '#090c15');
+        grad.addColorStop(1, '#131929');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, width, height);
+      }
+
+      // Outer border / cut guide
+      ctx.strokeStyle = printTheme === 'white' ? '#e2e8f0' : (printTheme === 'gold' ? '#d97706' : '#38bdf8');
+      ctx.lineWidth = 12;
+      ctx.strokeRect(20, 20, width - 40, height - 40);
+
+      // Text colors
+      const primaryTextColor = printTheme === 'white' || printTheme === 'qris_red' ? '#0f172a' : '#ffffff';
+      const accentTextColor = printTheme === 'white' ? '#b45309' : (printTheme === 'gold' ? '#fbbf24' : '#38bdf8');
+
+      // Top Title / Badge
+      ctx.textAlign = 'center';
+      if (printTheme === 'qris_red') {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 52px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('QRIS & GOOGLE REVIEW', width / 2, height * 0.1);
+      } else {
+        ctx.fillStyle = accentTextColor;
+        ctx.font = 'bold 44px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('⭐⭐⭐⭐⭐', width / 2, height * 0.11);
+      }
+
+      // Business Name
+      ctx.fillStyle = printTheme === 'qris_red' ? '#0f172a' : primaryTextColor;
+      ctx.font = 'bold 64px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(printBusinessName.toUpperCase(), width / 2, height * 0.22);
+
+      // Tagline
+      ctx.fillStyle = printTheme === 'white' ? '#64748b' : '#94a3b8';
+      ctx.font = '36px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(printTagline, width / 2, height * 0.28);
+
+      // Draw QR Code
+      const qrImg = new Image();
+      qrImg.crossOrigin = 'anonymous';
+      qrImg.src = reviewQrDataUrl;
+
+      await new Promise<void>((resolve) => {
+        qrImg.onload = () => {
+          const qrSize = Math.min(width * 0.55, 600);
+          const qrX = (width - qrSize) / 2;
+          const qrY = height * 0.35;
+
+          // White backing for QR
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(qrX - 16, qrY - 16, qrSize + 32, qrSize + 32);
+          ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+          resolve();
+        };
+      });
+
+      // NFC Wave Badge & CTA
+      ctx.fillStyle = accentTextColor;
+      ctx.font = 'bold 40px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(`⚡ ${printCtaText}`, width / 2, height * 0.82);
+
+      ctx.fillStyle = printTheme === 'white' ? '#94a3b8' : '#64748b';
+      ctx.font = '30px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('Tap Ulasan NFC & Scan QR Kamera', width / 2, height * 0.88);
+
+      // Download file
+      const link = document.createElement('a');
+      link.download = `Design_Cetak_${printBusinessName.replace(/\s+/g, '_')}_${printTemplate}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      console.error('Download image failed:', e);
+    } finally {
+      setIsDownloadingImage(false);
+    }
   };
 
   // Filtered admin cards
@@ -537,57 +572,16 @@ export default function App() {
     return matchesSearch;
   });
 
-  // Export Bulk Results to CSV
-  const exportBulkCsv = () => {
-    if (bulkResults.length === 0) return;
-    const headers = ['Business Name', 'Category', 'Place ID', 'CID (Decimal)', 'CID (Hex)', 'Google Review Link', 'Google Maps Link', 'Address', 'Status'];
-    const rows = bulkResults.map(p => [
-      `"${p.name.replace(/"/g, '""')}"`,
-      `"${p.category}"`,
-      `"${p.place_id}"`,
-      `"${p.cid_decimal}"`,
-      `"${p.cid_hex}"`,
-      `"${p.review_url}"`,
-      `"${p.maps_url_cid}"`,
-      `"${p.address.replace(/"/g, '""')}"`,
-      `"${p.business_status}"`
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Google_Place_ID_Export_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // FAQ items for Place ID Finder
-  const faqItems = [
-    {
-      q: 'Apa perbedaan antara Google Place ID, CID, dan Google Maps Link?',
-      a: 'Place ID adalah string unik Google (contoh: ChIJXxIA0RaB5i0ReoMyHzOBqH4) yang digunakan di Google Places API dan URL ulasan langsung. CID (Customer Identification) adalah angka 64-bit unik tempat pada peta (contoh: 9126686701433029498). Maps Link adalah URL untuk navigasi ke tempat tersebut di Google Maps.'
-    },
-    {
-      q: 'Bagaimana cara tool ini bekerja tanpa API Key Google?',
-      a: 'Tool ini mengekstraksi dan mendekode struktur Feature ID (FID) 64-bit biner dan alamat protobuf Google Maps yang ditanamkan secara publik di redirect link Google Maps (seperti maps.app.goo.gl). Semua konversi dilakukan secara instan 100% akurat.'
-    },
-    {
-      q: 'Bagaimana cara langsung membuat kartu ulasan NFC menggunakan Place ID ini?',
-      a: 'Setelah Anda menyalin Place ID atau Google Review Link, Anda dapat langsung mengklik tombol "Terapkan ke Kartu TapUlasan Saya" atau menggunakan menu "Aktivasi Kartu" untuk langsung mengisi formulir review 5-bintang kartu NFC Anda.'
-    },
-    {
-      q: 'Apakah bisa digunakan untuk tautan pendek maps.app.goo.gl?',
-      a: 'Ya! Tautan pendek maps.app.goo.gl, g.page, goo.gl/maps, tautan koordinat, hingga nama bisnis langsung didukung penuh secara otomatis.'
-    }
-  ];
-
   return (
     <div className="min-h-screen bg-[#07090e] text-slate-100 font-sans selection:bg-amber-500/20 selection:text-amber-300">
-      {/* Sleek Top Navigation Bar */}
-      <header className="sticky top-0 z-50 backdrop-blur-md bg-[#07090e]/85 border-b border-slate-800/80">
+      
+      {/* ========================================================================= */}
+      {/* CLEAN SLEEK NAVIGATION BAR (No Right Menu, Clean & Focused)                */}
+      {/* ========================================================================= */}
+      <header className="no-print sticky top-0 z-50 backdrop-blur-md bg-[#07090e]/90 border-b border-slate-800/80">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          {/* Logo & Brand */}
+          
+          {/* Logo & Brand Left */}
           <div 
             onClick={() => setCurrentView('landing')}
             className="flex items-center gap-3 cursor-pointer group"
@@ -599,108 +593,60 @@ export default function App() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-bold text-lg tracking-tight text-white group-hover:text-amber-400 transition-colors">
+                <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-amber-400 transition-colors">
                   TapUlasan
                 </span>
-                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium border border-amber-500/20">
-                  NFC & Place ID
+                <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">
+                  NFC & QR
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 leading-none">Smart Review & Tools</p>
+              <p className="text-[11px] text-slate-400 leading-none">Smart Review Platform</p>
             </div>
           </div>
 
-          {/* Navigation Links */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-900/60 p-1 rounded-xl border border-slate-800">
+          {/* Clean Central Nav Tabs */}
+          <nav className="flex items-center gap-1.5 bg-slate-900/80 p-1 rounded-xl border border-slate-800">
             <button
               onClick={() => setCurrentView('landing')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                 currentView === 'landing'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
             >
               Dashboard
             </button>
 
             <button
-              onClick={() => {
-                setCurrentView('place_finder');
-                if (!finderResult) handleFindPlace('https://maps.app.goo.gl/yvPYFXEJcykFKrDYA');
-              }}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
-                currentView === 'place_finder'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+              onClick={() => setCurrentView('print_design')}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                currentView === 'print_design'
+                  ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
             >
-              <Compass className="w-3.5 h-3.5" />
-              Free Place ID Finder
-              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">Free</span>
+              <Printer className="w-3.5 h-3.5 text-amber-400" />
+              Cetak Desain QRIS & NFC
+              <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-mono">Auto</span>
             </button>
 
-            <button
-              onClick={() => setCurrentView('client_setup')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
-                currentView === 'client_setup'
-                  ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
-              }`}
-            >
-              <Settings className="w-3.5 h-3.5" />
-              Aktivasi Kartu
-            </button>
-
-            {isAdminAuthenticated ? (
+            {isAdminAuthenticated && (
               <button
                 onClick={() => setCurrentView('admin_dashboard')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
                   currentView === 'admin_dashboard' || currentView === 'print_grid'
-                    ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
+                    ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
                     : 'text-emerald-400 hover:bg-emerald-500/10'
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
                 Admin Panel
               </button>
-            ) : (
-              <button
-                onClick={() => setCurrentView('admin_login')}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all flex items-center gap-1.5 ${
-                  currentView === 'admin_login'
-                    ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-                }`}
-              >
-                <Lock className="w-3.5 h-3.5" />
-                Admin Login
-              </button>
             )}
           </nav>
 
-          {/* Quick CTA */}
-          <div className="flex items-center gap-2">
-            {isAdminAuthenticated ? (
-              <button
-                onClick={handleAdminLogout}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 border border-rose-500/20 flex items-center gap-1.5 transition-colors"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                Keluar
-              </button>
-            ) : (
-              <button
-                onClick={() => {
-                  setCurrentView('place_finder');
-                  if (!finderResult) handleFindPlace('https://maps.app.goo.gl/yvPYFXEJcykFKrDYA');
-                }}
-                className="px-3.5 py-1.5 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5"
-              >
-                <Search className="w-3.5 h-3.5" />
-                Cari Place ID
-              </button>
-            )}
-          </div>
+          {/* Right side is kept completely clean and empty as instructed */}
+          <div className="w-10 sm:w-24"></div>
         </div>
       </header>
 
@@ -708,924 +654,469 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         
         {/* ========================================================================= */}
-        {/* VIEW 1: FREE GOOGLE PLACE ID & CID FINDER (100% Free · No API key)       */}
+        {/* VIEW 1: PRINT DESIGN QRIS DAN NFC OTOMATIS                                 */}
         {/* ========================================================================= */}
-        {currentView === 'place_finder' && (
-          <div className="space-y-10">
-            {/* Hero Header */}
-            <div className="text-center max-w-3xl mx-auto space-y-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-medium">
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-                100% Free · No API key required
+        {currentView === 'print_design' && (
+          <div className="space-y-8">
+            
+            {/* Header / Intro */}
+            <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+              <div>
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-amber-400 mb-1">
+                  <Sparkles className="w-4 h-4" />
+                  Generator Siap Cetak Otomatis
+                </div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  Cetak Desain Standee Meja QRIS & Kartu NFC
+                </h1>
+                <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                  Buat desain display akrilik meja kasir, tent card, dan kartu NFC ulasan Google siap cetak beresolusi tinggi (300 DPI) secara instan.
+                </p>
               </div>
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold tracking-tight text-white">
-                Free Google Place ID Finder
-              </h1>
-              <p className="text-slate-300 text-base sm:text-lg">
-                Search a business or paste a Google Maps link. Get its Place ID, CID, review link and coordinates, each ready to copy.
-              </p>
 
-              {/* Feature Highlights with unboxed typographic separators */}
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-3 text-xs text-slate-400">
-                <span className="flex items-center gap-1 text-slate-300">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" /> Place ID and CID in one lookup
-                </span>
-                <span aria-hidden="true" className="text-slate-600">·</span>
-                <span className="flex items-center gap-1 text-slate-300">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" /> Works with Google Maps links, short ones too
-                </span>
-                <span aria-hidden="true" className="text-slate-600">·</span>
-                <span className="flex items-center gap-1 text-slate-300">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-400" /> Bulk lookup of up to 20 places
-                </span>
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  Cetak Sekarang (Print Otomatis)
+                </button>
+                <button
+                  onClick={handleDownloadHighResImage}
+                  disabled={isDownloadingImage}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold text-xs rounded-xl border border-slate-700 flex items-center gap-2 transition-colors cursor-pointer"
+                >
+                  {isDownloadingImage ? <RefreshCw className="w-4 h-4 animate-spin text-amber-400" /> : <Download className="w-4 h-4 text-amber-400" />}
+                  Unduh Gambar HD (PNG)
+                </button>
               </div>
             </div>
 
-            {/* Finder Tool Box */}
-            <div className="max-w-4xl mx-auto bg-[#0d101a] border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
-
-              {/* Segmented Mode Selector: One Place vs Bulk */}
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
-                <div className="flex items-center gap-1 bg-slate-900/90 p-1 rounded-xl border border-slate-800">
-                  <button
-                    onClick={() => { setFinderMode('single'); setFinderError(''); }}
-                    className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                      finderMode === 'single'
-                        ? 'bg-amber-500 text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    One place
-                  </button>
-                  <button
-                    onClick={() => { setFinderMode('bulk'); setFinderError(''); }}
-                    className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
-                      finderMode === 'bulk'
-                        ? 'bg-amber-500 text-slate-950 shadow-sm'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Bulk (up to 20)
-                  </button>
-                </div>
-
-                <div className="text-xs text-slate-400 flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Lookups left: <strong className="text-slate-200">Unlimited</strong>
-                </div>
-              </div>
-
-              {/* Error Alert */}
-              {finderError && (
-                <div className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-sm flex items-center gap-3">
-                  <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
-                  <span>{finderError}</span>
-                </div>
-              )}
-
-              {/* MODE 1: SINGLE PLACE LOOKUP */}
-              {finderMode === 'single' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-2">
-                      Business, address, Google Maps link or Place ID
-                    </label>
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type="text"
-                          value={finderInput}
-                          onChange={(e) => setFinderInput(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') handleFindPlace(); }}
-                          placeholder="e.g. https://maps.app.goo.gl/yvPYFXEJcykFKrDYA or Ayam Geprek Kimo-Kimo"
-                          className="w-full bg-[#131724] border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500"
-                        />
-                        {finderInput && (
-                          <button
-                            onClick={() => setFinderInput('')}
-                            className="absolute right-3 top-3.5 text-xs text-slate-500 hover:text-slate-300"
-                          >
-                            Hapus
-                          </button>
-                        )}
-                      </div>
-                      <button
-                        onClick={() => handleFindPlace()}
-                        disabled={finderLoading}
-                        className="px-6 py-3 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-sm rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-                      >
-                        {finderLoading ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            Mencari...
-                          </>
-                        ) : (
-                          <>
-                            <Search className="w-4 h-4" />
-                            Find Place ID
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-400">
-                    Type a name and pick it from the list. You can also paste a Google Maps link (short <code className="text-amber-300/80">maps.app.goo.gl</code> links too), a g.page link, a Place ID or a CID.
-                  </p>
-
-                  {/* Quick Try Samples */}
-                  <div className="pt-2 flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-slate-500">Coba contoh:</span>
-                    <button
-                      onClick={() => {
-                        const sample = 'https://maps.app.goo.gl/yvPYFXEJcykFKrDYA';
-                        setFinderInput(sample);
-                        handleFindPlace(sample);
-                      }}
-                      className="px-2.5 py-1 text-xs rounded-lg bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/60 transition-colors"
-                    >
-                      Ayam Geprek Kimo-Kimo
-                    </button>
-                    <button
-                      onClick={() => {
-                        const sample = 'ChIJXxIA0RaB5i0ReoMyHzOBqH4';
-                        setFinderInput(sample);
-                        handleFindPlace(sample);
-                      }}
-                      className="px-2.5 py-1 text-xs rounded-lg bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/60 transition-colors"
-                    >
-                      ChIJXxIA0RaB5i0ReoMyHzOBqH4
-                    </button>
-                    <button
-                      onClick={() => {
-                        const sample = '9126686701433029498';
-                        setFinderInput(sample);
-                        handleFindPlace(sample);
-                      }}
-                      className="px-2.5 py-1 text-xs rounded-lg bg-slate-800/80 hover:bg-slate-750 text-slate-300 hover:text-white border border-slate-700/60 transition-colors"
-                    >
-                      CID 9126686701433029498
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* MODE 2: BULK LOOKUP */}
-              {finderMode === 'bulk' && (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-300 mb-2">
-                      Paste up to 20 Google Maps links, Place IDs, or CIDs (one per line):
-                    </label>
-                    <textarea
-                      rows={5}
-                      value={bulkInput}
-                      onChange={(e) => setBulkInput(e.target.value)}
-                      placeholder="https://maps.app.goo.gl/yvPYFXEJcykFKrDYA&#10;ChIJXxIA0RaB5i0ReoMyHzOBqH4&#10;9126686701433029498"
-                      className="w-full bg-[#131724] border border-slate-700 rounded-xl p-4 text-xs font-mono text-white placeholder-slate-500 focus:outline-none focus:border-amber-500"
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-400">
-                      Total baris: {bulkInput.split('\n').filter(s => s.trim()).length} / 20
-                    </span>
-                    <button
-                      onClick={handleBulkLookup}
-                      disabled={finderLoading}
-                      className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-bold text-xs rounded-xl transition-all shadow-md shadow-amber-500/20 flex items-center gap-2 cursor-pointer"
-                    >
-                      {finderLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
-                      Process Bulk Lookup
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* SINGLE RESULT CARD */}
-            {finderMode === 'single' && finderResult && (
-              <div className="max-w-4xl mx-auto space-y-6">
-                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl space-y-6">
-                  {/* Result Header */}
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
-                    <div>
-                      <div className="text-xs uppercase tracking-wider text-amber-400 font-semibold mb-1">
-                        Your Place ID and CID
-                      </div>
-                      <h2 className="text-2xl sm:text-3xl font-extrabold text-white">
-                        {finderResult.name}
-                      </h2>
-                      <div className="text-xs text-slate-400 mt-1 flex flex-wrap items-center gap-2">
-                        <span className="text-slate-300 font-medium">{finderResult.category}</span>
-                        <span aria-hidden="true" className="text-slate-600">·</span>
-                        <span>{finderResult.address}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => applyPlaceToCardSetup(finderResult)}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-xl transition-all shadow-md shadow-amber-500/10 flex items-center gap-1.5"
-                      >
-                        <Settings className="w-3.5 h-3.5" />
-                        Terapkan ke Kartu TapUlasan
-                      </button>
-                      <button
-                        onClick={() => openPlaceQrModal(finderResult)}
-                        className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 transition-colors flex items-center gap-1.5"
-                      >
-                        <QrCode className="w-3.5 h-3.5 text-amber-400" />
-                        Buat QR Ulasan
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Key Fields Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* 1. Place ID */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Place ID</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.place_id, 'place_id')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'place_id' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'place_id' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="font-mono text-sm text-white select-all break-all py-1">
-                          {finderResult.place_id}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        Google's ID for this place on Google Maps and in the Places API.
-                      </p>
-                    </div>
-
-                    {/* 2. CID (decimal) */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">CID (decimal)</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.cid_decimal, 'cid_decimal')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'cid_decimal' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'cid_decimal' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="font-mono text-sm text-white select-all break-all py-1">
-                          {finderResult.cid_decimal}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        The number Google Maps uses in ?cid= links. Google Search links call it ludocid.
-                      </p>
-                    </div>
-
-                    {/* 3. CID (hex) */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">CID (hex)</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.cid_hex, 'cid_hex')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'cid_hex' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'cid_hex' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="font-mono text-sm text-white select-all break-all py-1">
-                          {finderResult.cid_hex}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        The same CID in hexadecimal: the part after the colon in the feature ID.
-                      </p>
-                    </div>
-
-                    {/* 4. Google Maps link (CID) */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Google Maps link (CID)</span>
-                          <div className="flex items-center gap-3">
-                            <a
-                              href={finderResult.maps_url_cid}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-slate-300 hover:text-white font-medium flex items-center gap-1"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Open
-                            </a>
-                            <button
-                              onClick={() => copyToClipboard(finderResult.maps_url_cid, 'maps_url_cid')}
-                              className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                            >
-                              {copiedKey === 'maps_url_cid' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              {copiedKey === 'maps_url_cid' ? 'Copied' : 'Copy'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="font-mono text-xs text-slate-300 truncate py-1">
-                          {finderResult.maps_url_cid}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        Opens this listing on Google Maps.
-                      </p>
-                    </div>
-
-                    {/* 5. Google Maps link (Place ID) */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Google Maps link (Place ID)</span>
-                          <div className="flex items-center gap-3">
-                            <a
-                              href={finderResult.maps_url_place_id}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-slate-300 hover:text-white font-medium flex items-center gap-1"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Open
-                            </a>
-                            <button
-                              onClick={() => copyToClipboard(finderResult.maps_url_place_id, 'maps_url_place_id')}
-                              className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                            >
-                              {copiedKey === 'maps_url_place_id' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              {copiedKey === 'maps_url_place_id' ? 'Copied' : 'Copy'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="font-mono text-xs text-slate-300 truncate py-1">
-                          {finderResult.maps_url_place_id}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        Opens the same place on Google Maps by its Place ID.
-                      </p>
-                    </div>
-
-                    {/* 6. Google review link (Direct 5-Star) */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-amber-500/30 flex flex-col justify-between relative overflow-hidden">
-                      <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-xl pointer-events-none" />
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                            Google review link
-                          </span>
-                          <div className="flex items-center gap-3">
-                            <a
-                              href={finderResult.review_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-slate-300 hover:text-white font-medium flex items-center gap-1"
-                            >
-                              <ExternalLink className="w-3 h-3" /> Open
-                            </a>
-                            <button
-                              onClick={() => copyToClipboard(finderResult.review_url, 'review_url')}
-                              className="text-xs text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1"
-                            >
-                              {copiedKey === 'review_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                              {copiedKey === 'review_url' ? 'Copied' : 'Copy'}
-                            </button>
-                          </div>
-                        </div>
-                        <div className="font-mono text-xs text-amber-200 truncate py-1">
-                          {finderResult.review_url}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        Opens Google's review form for this place. Reviewers need to be signed in to a Google Account.
-                      </p>
-                    </div>
-
-                    {/* 7. Latitude, longitude */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Latitude, longitude</span>
-                          <button
-                            onClick={() => copyToClipboard(`${finderResult.lat}, ${finderResult.lng}`, 'coordinates')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'coordinates' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'coordinates' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="font-mono text-sm text-white py-1">
-                          {finderResult.lat}, {finderResult.lng}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        Where Google puts the pin for this place.
-                      </p>
-                    </div>
-
-                    {/* 8. Address */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Address</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.address, 'address')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'address' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'address' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="text-xs text-slate-200 line-clamp-2 py-1">
-                          {finderResult.address}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        The address as Google formats it.
-                      </p>
-                    </div>
-
-                    {/* 9. Category */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Category</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.category, 'category')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'category' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'category' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="text-sm font-semibold text-white py-1">
-                          {finderResult.category}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        The category Google Maps shows for this place.
-                      </p>
-                    </div>
-
-                    {/* 10. Business status */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Business status</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.business_status, 'business_status')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'business_status' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'business_status' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2 py-1">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                          <span className="text-sm font-semibold text-emerald-400">{finderResult.business_status}</span>
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        Whether Google lists the business as open or closed.
-                      </p>
-                    </div>
-
-                    {/* 11. Feature ID (FID) */}
-                    <div className="bg-[#121624] p-4 rounded-xl border border-slate-800 flex flex-col justify-between md:col-span-2">
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-semibold text-slate-300">Feature ID (FID)</span>
-                          <button
-                            onClick={() => copyToClipboard(finderResult.fid, 'fid')}
-                            className="text-xs text-amber-400 hover:text-amber-300 font-medium flex items-center gap-1"
-                          >
-                            {copiedKey === 'fid' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                            {copiedKey === 'fid' ? 'Copied' : 'Copy'}
-                          </button>
-                        </div>
-                        <div className="font-mono text-xs text-slate-300 py-1 break-all select-all">
-                          {finderResult.fid}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-400 mt-2">
-                        The 0x…:0x… pair you see inside long Google Maps links.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Quota & Email info banner */}
-                  <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                      <span>Lookups left: <strong className="text-slate-200">6</strong>. A used lookup comes back 24 hours after you used it.</span>
-                    </div>
-                    <button
-                      onClick={() => alert(`Informasi ID untuk "${finderResult.name}" siap disalin langsung ke clipboard.`)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
-                    >
-                      Email me these IDs
-                    </button>
-                  </div>
-                </div>
-
-                {/* NEXT STEPS FOR THIS BUSINESS */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-bold text-white tracking-tight">
-                    Next steps for this business
+            {/* Layout: Control Form (Left) & Live Visual Preview (Right) */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+              
+              {/* Left Column: Customizer Controls (No-Print) */}
+              <div className="no-print lg:col-span-5 space-y-6">
+                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 space-y-5">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-amber-400" />
+                    Kustomisasi Desain Cetak
                   </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Step 1: Make a review QR code */}
-                    <div className="bg-[#0e121e] border border-slate-800 rounded-xl p-5 flex flex-col justify-between hover:border-amber-500/40 transition-colors">
-                      <div className="space-y-2">
-                        <div className="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-3">
-                          <QrCode className="w-5 h-5" />
-                        </div>
-                        <h4 className="font-bold text-sm text-white">Get a review QR code</h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          Make a free, print-ready QR code that opens this business's Google review form directly.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => openPlaceQrModal(finderResult)}
-                        className="mt-4 w-full py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1.5"
-                      >
-                        Make a review QR code
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
 
-                    {/* Step 2: Run the free GBP audit */}
-                    <div className="bg-[#0e121e] border border-slate-800 rounded-xl p-5 flex flex-col justify-between hover:border-amber-500/40 transition-colors">
-                      <div className="space-y-2">
-                        <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 mb-3">
-                          <ShieldCheck className="w-5 h-5" />
-                        </div>
-                        <h4 className="font-bold text-sm text-white">Run the free GBP audit</h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          Check profile score on 32 checks plus a Google policy scan for this place listing.
-                        </p>
-                      </div>
+                  {/* 1. Template Selector */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2">
+                      Pilihan Model Display / Kartu:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
                       <button
-                        onClick={() => setAuditModalOpen(true)}
-                        className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => setPrintTemplate('standee_review')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          printTemplate === 'standee_review'
+                            ? 'bg-amber-500/10 border-amber-500 text-white font-bold'
+                            : 'bg-[#121624] border-slate-800 text-slate-400 hover:text-white'
+                        }`}
                       >
-                        Run the free audit
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <div className="text-xs font-semibold">Standee Meja Review</div>
+                        <div className="text-[10px] text-slate-500">Google 5-Star + NFC</div>
                       </button>
-                    </div>
 
-                    {/* Step 3: Check Maps ranking */}
-                    <div className="bg-[#0e121e] border border-slate-800 rounded-xl p-5 flex flex-col justify-between hover:border-amber-500/40 transition-colors">
-                      <div className="space-y-2">
-                        <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-3">
-                          <TrendingUp className="w-5 h-5" />
-                        </div>
-                        <h4 className="font-bold text-sm text-white">Check Maps ranking</h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          See where it ranks in Google Maps search results around {finderResult.name}.
-                        </p>
-                      </div>
                       <button
-                        onClick={() => setRankModalOpen(true)}
-                        className="mt-4 w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-lg border border-slate-700 transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => setPrintTemplate('standee_dual')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          printTemplate === 'standee_dual'
+                            ? 'bg-amber-500/10 border-amber-500 text-white font-bold'
+                            : 'bg-[#121624] border-slate-800 text-slate-400 hover:text-white'
+                        }`}
                       >
-                        Check its Maps ranking
-                        <ArrowRight className="w-3.5 h-3.5" />
+                        <div className="text-xs font-semibold">Standee Meja Dual</div>
+                        <div className="text-[10px] text-slate-500">QRIS Kasir + NFC Review</div>
+                      </button>
+
+                      <button
+                        onClick={() => setPrintTemplate('nfc_card')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          printTemplate === 'nfc_card'
+                            ? 'bg-amber-500/10 border-amber-500 text-white font-bold'
+                            : 'bg-[#121624] border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="text-xs font-semibold">Kartu Kasir CR80</div>
+                        <div className="text-[10px] text-slate-500">Ukuran Kartu ATM / Saku</div>
+                      </button>
+
+                      <button
+                        onClick={() => setPrintTemplate('sticker')}
+                        className={`p-3 rounded-xl border text-left transition-all ${
+                          printTemplate === 'sticker'
+                            ? 'bg-amber-500/10 border-amber-500 text-white font-bold'
+                            : 'bg-[#121624] border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="text-xs font-semibold">Stiker Meja Kotak</div>
+                        <div className="text-[10px] text-slate-500">80 x 80 mm Kompak</div>
                       </button>
                     </div>
                   </div>
-                </div>
 
-                {/* FOR DEVELOPERS SECTION */}
-                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  {/* 2. Theme / Color Palette */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
+                      <Palette className="w-3.5 h-3.5 text-amber-400" />
+                      Tema Warna & Gaya:
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setPrintTheme('gold')}
+                        className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                          printTheme === 'gold' ? 'border-amber-400 bg-amber-500/10 text-amber-300 font-bold' : 'border-slate-800 bg-[#121624] text-slate-300'
+                        }`}
+                      >
+                        <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 shrink-0" />
+                        Obsidian Gold
+                      </button>
+
+                      <button
+                        onClick={() => setPrintTheme('cyan')}
+                        className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                          printTheme === 'cyan' ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 font-bold' : 'border-slate-800 bg-[#121624] text-slate-300'
+                        }`}
+                      >
+                        <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-cyan-400 to-emerald-400 shrink-0" />
+                        Neon Cyan
+                      </button>
+
+                      <button
+                        onClick={() => setPrintTheme('white')}
+                        className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                          printTheme === 'white' ? 'border-slate-300 bg-white/10 text-white font-bold' : 'border-slate-800 bg-[#121624] text-slate-300'
+                        }`}
+                      >
+                        <span className="w-3.5 h-3.5 rounded-full bg-white border border-slate-400 shrink-0" />
+                        Clean White (Hemat Tinta)
+                      </button>
+
+                      <button
+                        onClick={() => setPrintTheme('qris_red')}
+                        className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+                          printTheme === 'qris_red' ? 'border-rose-400 bg-rose-500/10 text-rose-300 font-bold' : 'border-slate-800 bg-[#121624] text-slate-300'
+                        }`}
+                      >
+                        <span className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-red-600 to-red-800 shrink-0" />
+                        QRIS Standar Resmi
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3. Text inputs */}
+                  <div className="space-y-3 pt-2">
                     <div>
-                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                        <Code2 className="w-5 h-5 text-amber-400" />
-                        For developers
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        Use this place in Google's APIs or in your website schema markup. Replace YOUR_API_KEY with your own key.
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Nama Bisnis / Toko:
+                      </label>
+                      <input
+                        type="text"
+                        value={printBusinessName}
+                        onChange={(e) => setPrintBusinessName(e.target.value)}
+                        className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        placeholder="Contoh: Ayam Geprek Kimo-Kimo"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Tagline / Pesan Pendek:
+                      </label>
+                      <input
+                        type="text"
+                        value={printTagline}
+                        onChange={(e) => setPrintTagline(e.target.value)}
+                        className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        placeholder="Contoh: Ulasan Anda Sangat Berarti Bagi Kami"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Link Ulasan Google / URL NFC:
+                      </label>
+                      <input
+                        type="text"
+                        value={printReviewUrl}
+                        onChange={(e) => setPrintReviewUrl(e.target.value)}
+                        className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3 py-2 text-xs text-amber-300 font-mono focus:outline-none focus:border-amber-500"
+                        placeholder="https://search.google.com/local/writereview?placeid=..."
+                      />
+                      <p className="text-[10px] text-slate-500 mt-1">
+                        Kode QR di sebelah kanan otomatis diperbarui mengikuti URL ini.
                       </p>
                     </div>
 
-                    {/* Segmented Code Tabs */}
-                    <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800 shrink-0">
-                      <button
-                        onClick={() => setDevSnippetTab('curl')}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                          devSnippetTab === 'curl' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        Places API (New)
-                      </button>
-                      <button
-                        onClick={() => setDevSnippetTab('embed')}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                          devSnippetTab === 'embed' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        Maps Embed
-                      </button>
-                      <button
-                        onClick={() => setDevSnippetTab('schema')}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                          devSnippetTab === 'schema' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        Schema hasMap
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Code Snippet Box */}
-                  <div className="relative bg-[#07090e] border border-slate-800 rounded-xl p-4 font-mono text-xs text-amber-200 overflow-x-auto">
-                    <button
-                      onClick={() => {
-                        const content =
-                          devSnippetTab === 'curl'
-                            ? finderResult.snippets.curl
-                            : devSnippetTab === 'embed'
-                            ? finderResult.snippets.maps_embed
-                            : finderResult.snippets.schema_json;
-                        copyToClipboard(content, 'dev_snippet');
-                      }}
-                      className="absolute top-3 right-3 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-md text-[11px] font-sans flex items-center gap-1 border border-slate-700 transition-colors"
-                    >
-                      {copiedKey === 'dev_snippet' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      {copiedKey === 'dev_snippet' ? 'Copied' : 'Copy'}
-                    </button>
-                    <pre className="pr-16 leading-relaxed">
-                      {devSnippetTab === 'curl' && finderResult.snippets.curl}
-                      {devSnippetTab === 'embed' && finderResult.snippets.maps_embed}
-                      {devSnippetTab === 'schema' && finderResult.snippets.schema_json}
-                    </pre>
-                  </div>
-                  <p className="text-[11px] text-slate-500">
-                    The fields in X-Goog-FieldMask set the price of the call. Google doesn't charge for a request that asks for the id field only, and recommends one to refresh Place IDs older than 12 months.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* BULK RESULTS TABLE */}
-            {finderMode === 'bulk' && bulkResults.length > 0 && (
-              <div className="max-w-5xl mx-auto space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xl font-bold text-white">
-                    Bulk Lookup Results ({bulkResults.length} places)
-                  </h3>
-                  <button
-                    onClick={exportBulkCsv}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    Export to CSV
-                  </button>
-                </div>
-
-                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-[#121624] text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                        <tr>
-                          <th className="py-3.5 px-4 font-semibold">Business Name</th>
-                          <th className="py-3.5 px-4 font-semibold">Place ID</th>
-                          <th className="py-3.5 px-4 font-semibold">CID (Decimal)</th>
-                          <th className="py-3.5 px-4 font-semibold">Review Link</th>
-                          <th className="py-3.5 px-4 font-semibold text-right">Aksi</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-800/60 font-mono">
-                        {bulkResults.map((item, idx) => (
-                          <tr key={idx} className="hover:bg-slate-900/50 transition-colors">
-                            <td className="py-3 px-4 font-sans font-medium text-white max-w-[200px] truncate">
-                              {item.name}
-                              <div className="text-[10px] text-slate-500 truncate">{item.address}</div>
-                            </td>
-                            <td className="py-3 px-4 text-amber-300">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate max-w-[130px]">{item.place_id || 'N/A'}</span>
-                                {item.place_id && (
-                                  <button
-                                    onClick={() => copyToClipboard(item.place_id, `bulk_pid_${idx}`)}
-                                    className="text-slate-400 hover:text-amber-400"
-                                  >
-                                    {copiedKey === `bulk_pid_${idx}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-300">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate max-w-[120px]">{item.cid_decimal || 'N/A'}</span>
-                                {item.cid_decimal && (
-                                  <button
-                                    onClick={() => copyToClipboard(item.cid_decimal, `bulk_cid_${idx}`)}
-                                    className="text-slate-400 hover:text-amber-400"
-                                  >
-                                    {copiedKey === `bulk_cid_${idx}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-slate-300">
-                              {item.review_url ? (
-                                <a
-                                  href={item.review_url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="text-amber-400 hover:underline flex items-center gap-1 font-sans"
-                                >
-                                  Test Review <ExternalLink className="w-3 h-3" />
-                                </a>
-                              ) : (
-                                '—'
-                              )}
-                            </td>
-                            <td className="py-3 px-4 text-right font-sans">
-                              <button
-                                onClick={() => applyPlaceToCardSetup(item)}
-                                className="px-2.5 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 text-[11px] font-medium border border-amber-500/20 transition-colors"
-                              >
-                                Terapkan ke Kartu
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* HOW IT WORKS (3 STEPS) */}
-            <div className="max-w-4xl mx-auto space-y-4 pt-4">
-              <h3 className="text-xl font-bold text-white text-center">How it works</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-[#0d101a] border border-slate-800 rounded-xl p-5 space-y-2">
-                  <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center">
-                    1
-                  </div>
-                  <h4 className="font-bold text-sm text-white">Search or paste a link</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Type a business name and city, or an address. Or paste a Google Maps link, a Place ID or a CID.
-                  </p>
-                </div>
-                <div className="bg-[#0d101a] border border-slate-800 rounded-xl p-5 space-y-2">
-                  <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center">
-                    2
-                  </div>
-                  <h4 className="font-bold text-sm text-white">Pick the right place</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Instantly extract and verify the name, address, and coordinates on the result card.
-                  </p>
-                </div>
-                <div className="bg-[#0d101a] border border-slate-800 rounded-xl p-5 space-y-2">
-                  <div className="w-7 h-7 rounded-full bg-amber-500/20 text-amber-400 font-bold text-xs flex items-center justify-center">
-                    3
-                  </div>
-                  <h4 className="font-bold text-sm text-white">Copy what you need</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Copy the Place ID, the CID, a Google Maps link or the review link. Each value has its own copy button.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* COMPARISON TABLE: Place ID vs CID vs Maps link vs review link */}
-            <div className="max-w-4xl mx-auto space-y-4 pt-6">
-              <div className="space-y-1">
-                <h3 className="text-xl font-bold text-white">
-                  Place ID vs CID vs Maps link vs review link
-                </h3>
-                <p className="text-xs text-slate-400">
-                  A Place ID is the text code Google uses to identify one place on Google Maps and in its Places API.
-                </p>
-              </div>
-
-              <div className="bg-[#0d101a] border border-slate-800 rounded-2xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[#121624] text-slate-300 font-semibold border-b border-slate-800">
-                      <tr>
-                        <th className="py-3 px-4">Name</th>
-                        <th className="py-3 px-4">What it looks like</th>
-                        <th className="py-3 px-4">Where you see it</th>
-                        <th className="py-3 px-4">What it's for</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800 text-slate-300">
-                      <tr>
-                        <td className="py-3 px-4 font-bold text-amber-400 whitespace-nowrap">Place ID</td>
-                        <td className="py-3 px-4 font-mono text-slate-200">ChIJgUbEo8cfqokR5lP9_Wh_DaM</td>
-                        <td className="py-3 px-4 text-slate-400">Google's Place ID finder, Places API responses and Business Profile APIs.</td>
-                        <td className="py-3 px-4">Places API calls, Maps embeds, review links, rank trackers and review widgets.</td>
-                      </tr>
-                      <tr>
-                        <td className="py-3 px-4 font-bold text-amber-400 whitespace-nowrap">CID (ludocid)</td>
-                        <td className="py-3 px-4 font-mono text-slate-200">11749187091794056166</td>
-                        <td className="py-3 px-4 text-slate-400">Google Maps links with ?cid=, and Google Search links as ludocid.</td>
-                        <td className="py-3 px-4">A Google Maps link that opens the listing. Some local SEO tools ask for it.</td>
-                      </tr>
-                      <tr>
-                        <td className="py-3 px-4 font-bold text-amber-400 whitespace-nowrap">Feature ID (FID)</td>
-                        <td className="py-3 px-4 font-mono text-slate-200">0x89aa1fc7a3c44681:0xa30d7f68fdfd53e6</td>
-                        <td className="py-3 px-4 text-slate-400">Inside long Google Maps links, after !1s.</td>
-                        <td className="py-3 px-4">Finding the CID by hand: the part after the colon is the CID in hex.</td>
-                      </tr>
-                      <tr>
-                        <td className="py-3 px-4 font-bold text-amber-400 whitespace-nowrap">Google Maps link</td>
-                        <td className="py-3 px-4 font-mono text-slate-200">https://maps.app.goo.gl/…</td>
-                        <td className="py-3 px-4 text-slate-400">The Share button in Google Maps, or your browser's address bar.</td>
-                        <td className="py-3 px-4">Sending someone to the listing. Long Maps link holds the feature ID.</td>
-                      </tr>
-                      <tr>
-                        <td className="py-3 px-4 font-bold text-amber-400 whitespace-nowrap">Review link</td>
-                        <td className="py-3 px-4 font-mono text-slate-200 truncate max-w-[200px]">https://search.google.com/local/writereview?placeid=...</td>
-                        <td className="py-3 px-4 text-slate-400">Built from Place ID. Owners get short link under Get more reviews.</td>
-                        <td className="py-3 px-4">Asking customers for a review by NFC card, email, text or QR code.</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* EDUCATIONAL GUIDES */}
-            <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6 pt-6">
-              <div className="bg-[#0d101a] border border-slate-800 rounded-xl p-6 space-y-3">
-                <h4 className="font-bold text-base text-white flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4 text-amber-400" />
-                  How to find a Google Place ID without this tool
-                </h4>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  A Google Maps link doesn't show the Place ID directly in the browser address bar. Usually, you must open Google's developer documentation page, create a Google Cloud Project, enable Places API (New), or use Text Search. With this free tool, you don't need any API key or billing account.
-                </p>
-              </div>
-
-              <div className="bg-[#0d101a] border border-slate-800 rounded-xl p-6 space-y-3">
-                <h4 className="font-bold text-base text-white flex items-center gap-2">
-                  <Calculator className="w-4 h-4 text-amber-400" />
-                  How to find the CID of a Google Business Profile
-                </h4>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  The CID is a 64-bit integer. In a desktop browser, you look after <code className="text-amber-300">!1s</code> for two hexadecimal numbers (like <code className="text-amber-300">0x7ea881331f32837a</code>) and convert that hex value to decimal. Our tool calculates this automatically in milliseconds!
-                </p>
-              </div>
-            </div>
-
-            {/* FAQ ACCORDION */}
-            <div className="max-w-4xl mx-auto space-y-3 pt-6">
-              <h3 className="text-xl font-bold text-white">Frequently Asked Questions</h3>
-              <div className="space-y-2">
-                {faqItems.map((item, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-[#0d101a] border border-slate-800 rounded-xl overflow-hidden transition-colors"
-                  >
-                    <button
-                      onClick={() => setActiveFaq(activeFaq === idx ? null : idx)}
-                      className="w-full p-4 text-left flex items-center justify-between text-xs font-semibold text-white hover:text-amber-400"
-                    >
-                      <span>{item.q}</span>
-                      <ChevronRight className={`w-4 h-4 transition-transform ${activeFaq === idx ? 'rotate-90 text-amber-400' : 'text-slate-500'}`} />
-                    </button>
-                    {activeFaq === idx && (
-                      <div className="px-4 pb-4 text-xs text-slate-400 leading-relaxed border-t border-slate-800/60 pt-3">
-                        {item.a}
+                    {printTemplate === 'standee_dual' && (
+                      <div className="p-3 bg-slate-900/80 rounded-xl border border-slate-800 space-y-2.5">
+                        <div className="text-[11px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5" />
+                          Data QRIS Kasir
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-0.5">Nama Merchant QRIS:</label>
+                          <input
+                            type="text"
+                            value={printMerchantQris}
+                            onChange={(e) => setPrintMerchantQris(e.target.value)}
+                            className="w-full bg-[#121624] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] text-slate-400 mb-0.5">NMID / Identitas Merchant:</label>
+                          <input
+                            type="text"
+                            value={printNmid}
+                            onChange={(e) => setPrintNmid(e.target.value)}
+                            className="w-full bg-[#121624] border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono"
+                          />
+                        </div>
                       </div>
                     )}
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 mb-1">
+                        Instruksi Call To Action:
+                      </label>
+                      <input
+                        type="text"
+                        value={printCtaText}
+                        onChange={(e) => setPrintCtaText(e.target.value)}
+                        className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500"
+                        placeholder="Dekatkan HP Anda di Sini atau Scan QR"
+                      />
+                    </div>
+
+                    {/* Paper layout / Copies */}
+                    <div className="pt-2">
+                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                        Jumlah Cetak per Lembar A4:
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => setPrintCopiesPerPage(1)}
+                          className={`py-2 text-xs rounded-lg border font-medium transition-all ${
+                            printCopiesPerPage === 1 ? 'bg-amber-500 text-slate-950 font-bold border-amber-500' : 'bg-[#121624] text-slate-400 border-slate-800'
+                          }`}
+                        >
+                          1 Standee (Besar)
+                        </button>
+                        <button
+                          onClick={() => setPrintCopiesPerPage(2)}
+                          className={`py-2 text-xs rounded-lg border font-medium transition-all ${
+                            printCopiesPerPage === 2 ? 'bg-amber-500 text-slate-950 font-bold border-amber-500' : 'bg-[#121624] text-slate-400 border-slate-800'
+                          }`}
+                        >
+                          2 per A4 (Ganda)
+                        </button>
+                        <button
+                          onClick={() => setPrintCopiesPerPage(4)}
+                          className={`py-2 text-xs rounded-lg border font-medium transition-all ${
+                            printCopiesPerPage === 4 ? 'bg-amber-500 text-slate-950 font-bold border-amber-500' : 'bg-[#121624] text-slate-400 border-slate-800'
+                          }`}
+                        >
+                          4 per A4 (Kartu/Stiker)
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                ))}
+                </div>
+              </div>
+
+              {/* Right Column: Live Interactive Standee Preview & Printable Area */}
+              <div className="lg:col-span-7 flex flex-col items-center">
+                <div className="no-print text-center mb-3">
+                  <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
+                    Live Preview Standee Siap Cetak (WYSWYG)
+                  </span>
+                </div>
+
+                {/* The Printable Container (#print-root) */}
+                <div id="print-root" className="w-full flex flex-col items-center justify-center p-2">
+                  <div
+                    className={`grid gap-6 ${
+                      printCopiesPerPage === 1
+                        ? 'grid-cols-1 max-w-md w-full'
+                        : printCopiesPerPage === 2
+                        ? 'grid-cols-1 sm:grid-cols-2 max-w-3xl w-full'
+                        : 'grid-cols-2 max-w-3xl w-full'
+                    }`}
+                  >
+                    {Array.from({ length: printCopiesPerPage }).map((_, itemIndex) => (
+                      <div
+                        key={itemIndex}
+                        className={`page-break-avoid relative rounded-3xl p-6 sm:p-8 flex flex-col items-center justify-between text-center shadow-2xl transition-all border-2 border-dashed ${
+                          printTheme === 'white'
+                            ? 'bg-white text-slate-900 border-slate-300'
+                            : printTheme === 'cyan'
+                            ? 'bg-gradient-to-b from-[#070a14] to-[#0f172a] text-white border-cyan-500/40'
+                            : printTheme === 'qris_red'
+                            ? 'bg-slate-50 text-slate-900 border-rose-400'
+                            : 'bg-gradient-to-b from-[#090c15] to-[#121726] text-white border-amber-500/40'
+                        }`}
+                        style={{
+                          minHeight: printTemplate === 'nfc_card' ? '280px' : '480px',
+                        }}
+                      >
+                        {/* Cut Line guide indicator */}
+                        <div className="absolute top-2 right-2 text-[9px] font-mono uppercase text-slate-400 opacity-60">
+                          ✂️ Potong di garis luar
+                        </div>
+
+                        {/* Top Header Badge */}
+                        <div className="w-full space-y-2">
+                          {printTheme === 'qris_red' ? (
+                            <div className="bg-red-700 text-white py-2 px-4 rounded-xl font-bold tracking-wider text-xs mb-2 shadow">
+                              QRIS & GOOGLE REVIEW 5-STAR
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-center gap-1 text-amber-400 text-lg">
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                              <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
+                            </div>
+                          )}
+
+                          <h2
+                            className={`font-black tracking-tight leading-tight uppercase ${
+                              printTemplate === 'nfc_card' ? 'text-lg' : 'text-xl sm:text-2xl'
+                            } ${
+                              printTheme === 'white' ? 'text-slate-900' : 'text-white'
+                            }`}
+                          >
+                            {printBusinessName || 'NAMA TOKO ANDA'}
+                          </h2>
+
+                          <p
+                            className={`text-xs max-w-xs mx-auto leading-relaxed ${
+                              printTheme === 'white' ? 'text-slate-600' : 'text-slate-400'
+                            }`}
+                          >
+                            {printTagline || 'Bantu kami dengan memberikan ulasan bintang 5 di Google!'}
+                          </p>
+                        </div>
+
+                        {/* QR Code and NFC Center Zone */}
+                        <div className="my-5 flex flex-col items-center space-y-3">
+                          
+                          {/* Dual QRIS Mode: Side-by-side or stacked */}
+                          {printTemplate === 'standee_dual' ? (
+                            <div className="grid grid-cols-2 gap-3 items-center">
+                              {/* QRIS Code Box */}
+                              <div className="bg-white p-2.5 rounded-2xl shadow-lg border border-slate-200 text-center">
+                                <div className="text-[10px] font-bold text-red-600 uppercase mb-1">
+                                  QRIS Bayar
+                                </div>
+                                {qrisQrDataUrl && (
+                                  <img src={qrisQrDataUrl} alt="QRIS" className="w-28 h-28 mx-auto" />
+                                )}
+                                <div className="text-[8px] font-bold text-slate-800 truncate mt-1">
+                                  {printMerchantQris}
+                                </div>
+                              </div>
+
+                              {/* Review QR Code Box */}
+                              <div className="bg-white p-2.5 rounded-2xl shadow-lg border border-slate-200 text-center">
+                                <div className="text-[10px] font-bold text-amber-600 uppercase mb-1">
+                                  ⭐ Review Google
+                                </div>
+                                {reviewQrDataUrl && (
+                                  <img src={reviewQrDataUrl} alt="Google Review QR" className="w-28 h-28 mx-auto" />
+                                )}
+                                <div className="text-[8px] font-semibold text-slate-600 mt-1">
+                                  NFC & QR Ulasan
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Standard Single Review QR Code Box */
+                            <div className="p-4 bg-white rounded-2xl shadow-xl border border-slate-200 inline-block relative group">
+                              {reviewQrDataUrl ? (
+                                <img
+                                  src={reviewQrDataUrl}
+                                  alt="Google Review QR Code"
+                                  className={`mx-auto ${
+                                    printTemplate === 'nfc_card' ? 'w-24 h-24' : 'w-44 h-44 sm:w-48 sm:h-48'
+                                  }`}
+                                />
+                              ) : (
+                                <div className="w-44 h-44 flex items-center justify-center text-slate-400">
+                                  <RefreshCw className="w-6 h-6 animate-spin text-amber-500" />
+                                </div>
+                              )}
+                              <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wider text-center mt-1">
+                                Scan Kamera HP
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Contactless NFC Waves Graphic */}
+                          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold">
+                            <Radio className="w-4 h-4 animate-pulse" />
+                            <span>DEKATKAN HP DI SINI (TAP NFC)</span>
+                          </div>
+                        </div>
+
+                        {/* Bottom Footer Info */}
+                        <div className="w-full space-y-1">
+                          <div
+                            className={`font-bold text-xs uppercase tracking-wider ${
+                              printTheme === 'white' ? 'text-amber-700' : 'text-amber-400'
+                            }`}
+                          >
+                            {printCtaText}
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Tanpa perlu ketik nama restoran · Terbuka otomatis dalam 3 detik
+                          </div>
+                          <div className="text-[8px] text-slate-500 font-mono pt-1">
+                            Didukung oleh Platform TapUlasan Mandiri
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Helpful Print Tips (No-Print) */}
+                <div className="no-print mt-6 max-w-xl text-center space-y-2 text-xs text-slate-400 bg-slate-900/60 p-4 rounded-xl border border-slate-800">
+                  <div className="flex items-center justify-center gap-1.5 text-amber-400 font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    Tips Mencetak Standee Akrilik Meja Kasir:
+                  </div>
+                  <p>
+                    Gunakan kertas <strong>Art Paper 210/260 gsm</strong> atau <strong>Stiker Glossy</strong>. Setelah diprint, masukkan ke dalam holder akrilik meja ukuran A6/A5, atau tempelkan stiker NFC chip di bagian belakang untuk mengaktifkan fitur tap.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 2: LANDING DASHBOARD (Clean Informative, Obsidian Black, No Cards)    */}
+        {/* VIEW 2: BERANDA (Clean Elegant Obsidian Dashboard, No Card Setting / Finder) */}
         {/* ========================================================================= */}
         {currentView === 'landing' && (
           <div className="space-y-16">
+            
             {/* Hero Section */}
-            <div className="relative pt-6 pb-12 text-center max-w-4xl mx-auto space-y-6">
+            <div className="relative pt-8 pb-12 text-center max-w-4xl mx-auto space-y-6">
               <div className="absolute inset-0 -top-20 flex items-center justify-center pointer-events-none">
-                <div className="w-[500px] h-[300px] bg-amber-500/10 blur-[120px] rounded-full" />
+                <div className="w-[500px] h-[300px] bg-amber-500/10 blur-[130px] rounded-full" />
               </div>
 
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-medium">
                 <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                Solusi Cerdas Ulasan Google Bisnis Tanpa Ribet
+                Solusi Cerdas Ulasan Google Bisnis Bintang 5
               </div>
 
               <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-tight">
@@ -1636,31 +1127,22 @@ export default function App() {
               </h1>
 
               <p className="text-slate-300 text-base sm:text-lg max-w-2xl mx-auto leading-relaxed">
-                Platform kartu ulasan pintar berbasis <strong>NFC & Barcode QR mandiri</strong>. Pelanggan cukup menempelkan smartphone atau scan kamera, dialog ulasan Google langsung terbuka!
+                Platform kartu ulasan pintar dan standee meja kasir berbasis <strong>NFC & Barcode QR mandiri</strong>. Pelanggan cukup menempelkan smartphone atau scan kamera, dialog ulasan Google langsung terbuka tanpa perlu mengetik!
               </p>
 
-              {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              {/* Action Button: Directly Go To Automatic Print Design Generator */}
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
                 <button
-                  onClick={() => {
-                    setCurrentView('place_finder');
-                    handleFindPlace('https://maps.app.goo.gl/yvPYFXEJcykFKrDYA');
-                  }}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 cursor-pointer"
+                  onClick={() => setCurrentView('print_design')}
+                  className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm transition-all shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2.5 cursor-pointer group"
                 >
-                  <Search className="w-4 h-4" />
-                  Cari Google Place ID Bisnis Anda
-                </button>
-                <button
-                  onClick={() => setCurrentView('client_setup')}
-                  className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm border border-slate-700 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Settings className="w-4 h-4 text-amber-400" />
-                  Aktivasi / Setting Kartu Saya
+                  <Printer className="w-4 h-4 text-slate-950 group-hover:scale-110 transition-transform" />
+                  Buat Desain Cetak QRIS & NFC Otomatis
+                  <ArrowRight className="w-4 h-4 text-slate-950 group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
 
-              {/* Quick Info Bar */}
+              {/* Quick Trust Badges */}
               <div className="pt-6 flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400" />
@@ -1672,12 +1154,12 @@ export default function App() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-400" />
-                  <span>Data Kartu Privat & Aman</span>
+                  <span>Siap Cetak Display Meja Akrilik</span>
                 </div>
               </div>
             </div>
 
-            {/* Visual Feature Cards Grid */}
+            {/* Visual Feature Cards Grid (Clean, No Card Lists, No Place ID Finder) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
               <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 relative overflow-hidden group hover:border-amber-500/30 transition-colors">
                 <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-4">
@@ -1685,7 +1167,7 @@ export default function App() {
                 </div>
                 <h3 className="text-lg font-bold text-white mb-2">1 Tap Langsung Terbuka</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Pelanggan tidak perlu mengetik nama restoran atau toko Anda di Google Search. Cukup tap kartu NFC, dialog review bintang 5 langsung siap diisi.
+                  Pelanggan tidak perlu repot mencari nama restoran atau toko Anda di Google Search. Cukup tap kartu NFC, dialog review bintang 5 langsung siap diisi dalam 3 detik.
                 </p>
               </div>
 
@@ -1695,17 +1177,17 @@ export default function App() {
                 </div>
                 <h3 className="text-lg font-bold text-white mb-2">Dual NFC + Barcode QR</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Dilengkapi QR code dinamis beresolusi tinggi di bagian belakang. Ponsel tanpa fitur NFC tetap bisa scan dengan cepat lewat kamera.
+                  Dilengkapi QR code dinamis beresolusi tinggi. Pelanggan dengan ponsel tipe lama tanpa fitur NFC tetap dapat memberikan ulasan secara instan hanya dengan mengarahkan kamera.
                 </p>
               </div>
 
               <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 relative overflow-hidden group hover:border-amber-500/30 transition-colors">
-                <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-4">
-                  <Compass className="w-6 h-6" />
+                <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 mb-4">
+                  <Printer className="w-6 h-6" />
                 </div>
-                <h3 className="text-lg font-bold text-white mb-2">Place ID Finder Gratis</h3>
+                <h3 className="text-lg font-bold text-white mb-2">Desain Siap Cetak Otomatis</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Bingung mencari link ulasan langsung bisnis Anda? Gunakan fitur bawaan Place ID Finder kami untuk mengekstrak CID, Place ID, dan direct link ulasan tanpa API key!
+                  Hasilkan template cetak standee meja akrilik A6/A5, standee kasir dual QRIS + Google Review, serta stiker meja beresolusi tinggi 300 DPI dengan 1 klik mudah.
                 </p>
               </div>
             </div>
@@ -1721,14 +1203,14 @@ export default function App() {
                     Berapa Potensi Ulasan Bintang 5 Bisnis Anda?
                   </h3>
                   <p className="text-xs text-slate-400 mt-1">
-                    Sesuaikan jumlah pengunjung harian toko/restoran Anda untuk melihat proyeksi review.
+                    Sesuaikan jumlah pengunjung harian toko atau restoran Anda untuk melihat estimasi ulasan baru setiap bulan.
                   </p>
                 </div>
-                <div className="bg-amber-500/10 border border-amber-500/30 px-4 py-2.5 rounded-xl text-center">
-                  <div className="text-2xl font-extrabold text-amber-400">
+                <div className="bg-amber-500/10 border border-amber-500/30 px-5 py-3 rounded-xl text-center shrink-0">
+                  <div className="text-3xl font-extrabold text-amber-400">
                     +{Math.round((dailyCustomers * (tapConversionRate / 100)) * 30)}
                   </div>
-                  <div className="text-[10px] text-slate-400 uppercase tracking-wider">Review Baru / Bulan</div>
+                  <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Review Baru / Bulan</div>
                 </div>
               </div>
 
@@ -1747,7 +1229,7 @@ export default function App() {
                     onChange={(e) => setDailyCustomers(Number(e.target.value))}
                     className="w-full accent-amber-500 cursor-pointer"
                   />
-                  <div className="flex justify-between text-[10px] text-slate-500">
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                     <span>10 orang</span>
                     <span>150 orang</span>
                     <span>300 orang</span>
@@ -1768,7 +1250,7 @@ export default function App() {
                     onChange={(e) => setTapConversionRate(Number(e.target.value))}
                     className="w-full accent-emerald-500 cursor-pointer"
                   />
-                  <div className="flex justify-between text-[10px] text-slate-500">
+                  <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                     <span>5% (konservatif)</span>
                     <span>15% (rata-rata)</span>
                     <span>40% (optimal)</span>
@@ -1777,49 +1259,71 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick Access Portals Bar */}
-            <div className="max-w-4xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div
-                onClick={() => setCurrentView('client_setup')}
-                className="bg-[#0e121e] border border-slate-800 hover:border-amber-500/50 rounded-2xl p-6 cursor-pointer transition-all group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 transition-transform">
-                    <Settings className="w-5 h-5" />
-                  </div>
-                  <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-amber-400 group-hover:translate-x-1 transition-all" />
+            {/* Step by Step: Cara Kerja */}
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div className="text-center space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-wider text-amber-400">
+                  Mudah & Cepat
                 </div>
-                <h4 className="font-bold text-base text-white group-hover:text-amber-400 transition-colors">
-                  Aktivasi Kartu Pelanggan
-                </h4>
-                <p className="text-xs text-slate-400 mt-1">
-                  Punya kartu fisik? Masukkan ID kartu Anda di sini untuk mengaktifkan tautan Google Maps bisnis Anda.
-                </p>
+                <h3 className="text-2xl font-bold text-white">Cara Kerja 3 Langkah Mudah</h3>
               </div>
 
-              <div
-                onClick={() => setCurrentView('admin_login')}
-                className="bg-[#0e121e] border border-slate-800 hover:border-slate-700 rounded-2xl p-6 cursor-pointer transition-all group"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-300 mb-3 group-hover:scale-110 transition-transform">
-                    <Lock className="w-5 h-5" />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-5 text-center space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/10 text-amber-400 font-bold flex items-center justify-center mx-auto text-sm border border-amber-500/20">
+                    1
                   </div>
-                  <ArrowRight className="w-5 h-5 text-slate-600 group-hover:text-slate-300 group-hover:translate-x-1 transition-all" />
+                  <h4 className="font-bold text-sm text-white">Cetak Desain Standee</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Gunakan fitur cetak otomatis kami untuk membuat standee meja kasir atau stiker kartu yang elegan.
+                  </p>
                 </div>
-                <h4 className="font-bold text-base text-white">
-                  Portal Admin Inventaris
-                </h4>
-                <p className="text-xs text-slate-400 mt-1">
-                  Area terlindungi bagi pengelola untuk batch kartu, pencetakan QR sticker, dan monitoring scan.
-                </p>
+
+                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-5 text-center space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 font-bold flex items-center justify-center mx-auto text-sm border border-emerald-500/20">
+                    2
+                  </div>
+                  <h4 className="font-bold text-sm text-white">Letakkan di Meja / Kasir</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Pasang standee di meja makan, resepsionis, atau kasir di mana pelanggan sedang menunggu tagihan.
+                  </p>
+                </div>
+
+                <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-5 text-center space-y-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/10 text-blue-400 font-bold flex items-center justify-center mx-auto text-sm border border-blue-500/20">
+                    3
+                  </div>
+                  <h4 className="font-bold text-sm text-white">Pelanggan Tap & Review</h4>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Pelanggan menempelkan HP mereka, dialog ulasan Google langsung muncul dengan bintang 5 terisi.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Callout Banner */}
+            <div className="max-w-4xl mx-auto bg-gradient-to-r from-amber-500/15 via-slate-900 to-amber-500/15 border border-amber-500/30 rounded-2xl p-8 text-center space-y-4">
+              <h3 className="text-2xl font-extrabold text-white">
+                Siap Melipatgandakan Ulasan Bintang 5 Bisnis Anda?
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl mx-auto leading-relaxed">
+                Buat standee meja kasir QRIS & Google Review NFC sekarang juga tanpa biaya tambahan.
+              </p>
+              <div>
+                <button
+                  onClick={() => setCurrentView('print_design')}
+                  className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 transition-all cursor-pointer inline-flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  Mulai Buat Desain Cetak Sekarang
+                </button>
               </div>
             </div>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 3: CLIENT / CUSTOMER CARD SETUP (Self-Service Activation)            */}
+        {/* VIEW 3: CLIENT / CUSTOMER CARD SETUP (Accessed via Secret Link)           */}
         {/* ========================================================================= */}
         {currentView === 'client_setup' && (
           <div className="max-w-2xl mx-auto space-y-6">
@@ -1836,7 +1340,6 @@ export default function App() {
               </p>
             </div>
 
-            {/* Error notification */}
             {setupError && (
               <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs flex items-center gap-3">
                 <AlertCircle className="w-5 h-5 shrink-0 text-rose-400" />
@@ -1844,7 +1347,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Step 1: Input Card ID */}
             {!setupCardData && !setupSuccessResult && (
               <div className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-4">
                 <div>
@@ -1875,7 +1377,6 @@ export default function App() {
               </div>
             )}
 
-            {/* Step 2: Edit & Save Card Form */}
             {setupCardData && !setupSuccessResult && (
               <form onSubmit={handleSaveCustomerSetup} className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-5">
                 <div className="flex items-center justify-between pb-4 border-b border-slate-800">
@@ -1907,31 +1408,19 @@ export default function App() {
                 </div>
 
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-slate-300">
-                      Link Google Maps, Place ID, atau Link Ulasan:
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCurrentView('place_finder');
-                        handleFindPlace(setupBusinessName || 'https://maps.app.goo.gl/yvPYFXEJcykFKrDYA');
-                      }}
-                      className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1"
-                    >
-                      <Search className="w-3 h-3" /> Cari via Place ID Finder
-                    </button>
-                  </div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    Link Google Maps atau Link Ulasan Bisnis:
+                  </label>
                   <input
                     type="text"
                     required
-                    placeholder="Paste link: https://maps.app.goo.gl/... atau ChIJ..."
+                    placeholder="Paste link: https://maps.app.goo.gl/... atau https://search.google.com/local/writereview?placeid=..."
                     value={setupMapsInput}
                     onChange={(e) => setSetupMapsInput(e.target.value)}
                     className="w-full bg-[#121624] border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
                   />
                   <p className="text-[11px] text-slate-400 mt-1.5">
-                    Sistem kami otomatis mengubah tautan Google Maps Anda menjadi URL dialog review bintang 5 resmi Google.
+                    Sistem kami otomatis mengubah tautan Google Maps Anda menjadi URL review bintang 5 resmi Google.
                   </p>
                 </div>
 
@@ -1948,7 +1437,6 @@ export default function App() {
               </form>
             )}
 
-            {/* Step 3: SUCCESS RESULT DISPLAY (Per User Requirement) */}
             {setupSuccessResult && (
               <div className="bg-[#0e121e] border border-emerald-500/30 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl relative overflow-hidden">
                 <div className="text-center space-y-2">
@@ -1961,7 +1449,6 @@ export default function App() {
                   </p>
                 </div>
 
-                {/* QR Code and Details Card */}
                 <div className="bg-[#121624] p-6 rounded-xl border border-slate-800 flex flex-col md:flex-row items-center gap-6">
                   {setupQrDataUrl && (
                     <div className="shrink-0 p-3 bg-white rounded-xl shadow-lg text-center">
@@ -2050,7 +1537,7 @@ export default function App() {
         )}
 
         {/* ========================================================================= */}
-        {/* VIEW 4: ADMIN LOGIN (Requires '*kewQkb:#sm')                              */}
+        {/* VIEW 4: ADMIN LOGIN (Mandatory PIN '*kewQkb:#sm')                         */}
         {/* ========================================================================= */}
         {currentView === 'admin_login' && (
           <div className="max-w-md mx-auto space-y-6 pt-10">
@@ -2103,7 +1590,6 @@ export default function App() {
         {/* ========================================================================= */}
         {currentView === 'admin_dashboard' && isAdminAuthenticated && (
           <div className="space-y-6">
-            {/* Top Admin Controls */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
                 <div className="inline-flex items-center gap-2 text-xs font-semibold text-emerald-400 mb-1">
@@ -2118,7 +1604,7 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => fetchAdminCards()}
-                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${adminLoading ? 'animate-spin' : ''}`} />
                   Refresh
@@ -2131,11 +1617,18 @@ export default function App() {
                   Batch Kartu Baru
                 </button>
                 <button
-                  onClick={() => preparePrintGrid('all')}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors"
+                  onClick={preparePrintGrid}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <Printer className="w-3.5 h-3.5 text-amber-400" />
                   Cetak Lembar QR
+                </button>
+                <button
+                  onClick={handleAdminLogout}
+                  className="px-3.5 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-medium rounded-xl border border-rose-500/20 flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Keluar Admin
                 </button>
               </div>
             </div>
@@ -2326,7 +1819,7 @@ export default function App() {
               <div>
                 <button
                   onClick={() => setCurrentView('admin_dashboard')}
-                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1 mb-1"
+                  className="text-xs text-slate-400 hover:text-white flex items-center gap-1 mb-1 cursor-pointer"
                 >
                   ← Kembali ke Admin Dashboard
                 </button>
@@ -2334,7 +1827,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => window.print()}
-                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg"
+                className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-2 shadow-lg cursor-pointer"
               >
                 <Printer className="w-4 h-4" />
                 Cetak Dokumen (Ctrl + P)
@@ -2379,10 +1872,42 @@ export default function App() {
       </main>
 
       {/* ========================================================================= */}
+      {/* CLEAN FOOTER                                                              */}
+      {/* ========================================================================= */}
+      <footer className="no-print mt-20 border-t border-slate-800/80 py-8 text-center text-xs text-slate-500">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p>© {new Date().getFullYear()} TapUlasan — Smart NFC & Barcode QR Review Platform.</p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setCurrentView('landing')}
+              className="text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              Beranda
+            </button>
+            <button
+              onClick={() => setCurrentView('print_design')}
+              className="text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              Cetak Desain
+            </button>
+            {/* Discreet Admin Lock Link */}
+            <button
+              onClick={() => setCurrentView(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login')}
+              className="text-slate-600 hover:text-slate-400 transition-colors flex items-center gap-1"
+              title="Akses Pengelola"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Admin</span>
+            </button>
+          </div>
+        </div>
+      </footer>
+
+      {/* ========================================================================= */}
       {/* MODALS SECTION                                                            */}
       {/* ========================================================================= */}
 
-      {/* 1. Batch Generate Modal (Admin) */}
+      {/* Batch Generate Modal (Admin) */}
       {batchModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0e121e] border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
@@ -2420,14 +1945,14 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setBatchModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl"
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl cursor-pointer"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={generatingBatch}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5"
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
                 >
                   {generatingBatch ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
                   Generate Sekarang
@@ -2438,7 +1963,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 2. Admin Single Card QR Modal */}
+      {/* Admin Single Card QR Modal */}
       {selectedCardForQR && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0e121e] border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-4">
@@ -2465,122 +1990,11 @@ export default function App() {
               )}
               <button
                 onClick={() => setSelectedCardForQR(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl"
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl cursor-pointer"
               >
                 Tutup
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 3. Place Finder: Review QR Modal */}
-      {qrModalPlace && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e121e] border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-center space-y-4">
-            <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 mx-auto flex items-center justify-center">
-              <QrCode className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-white">{qrModalPlace.name}</h3>
-              <p className="text-xs text-slate-400 mt-1">Print-ready Google Review QR Code</p>
-            </div>
-
-            {qrPlaceDataUrl && (
-              <div className="p-4 bg-white rounded-2xl inline-block shadow-xl">
-                <img src={qrPlaceDataUrl} alt={qrModalPlace.name} className="w-52 h-52 mx-auto" />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <a
-                href={qrPlaceDataUrl}
-                download={`Review_QR_${qrModalPlace.name.replace(/\s+/g, '_')}.png`}
-                className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl flex items-center justify-center gap-2 shadow-md"
-              >
-                <Download className="w-4 h-4" /> Download PNG Print
-              </a>
-              <button
-                onClick={() => setQrModalPlace(null)}
-                className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-xl"
-              >
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 4. GBP Audit Simulation Modal */}
-      {auditModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e121e] border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="font-bold text-white text-base flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-emerald-400" />
-                Google Business Profile Audit
-              </h3>
-              <button onClick={() => setAuditModalOpen(false)} className="text-xs text-slate-400 hover:text-white">✕</button>
-            </div>
-            <div className="space-y-3 text-xs text-slate-300">
-              <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center justify-between">
-                <span>Skor Optimasi GBP:</span>
-                <strong className="text-emerald-400 text-sm">92 / 100 (Sangat Baik)</strong>
-              </div>
-              <ul className="space-y-2">
-                <li className="flex items-center gap-2 text-emerald-400">
-                  <Check className="w-3.5 h-3.5" /> Place ID & CID terverifikasi di Google Maps
-                </li>
-                <li className="flex items-center gap-2 text-emerald-400">
-                  <Check className="w-3.5 h-3.5" /> Link Review Langsung 5 Bintang valid & aktif
-                </li>
-                <li className="flex items-center gap-2 text-emerald-400">
-                  <Check className="w-3.5 h-3.5" /> Status Bisnis: Open
-                </li>
-                <li className="flex items-center gap-2 text-amber-400">
-                  <Sparkles className="w-3.5 h-3.5" /> Rekomendasi: Gunakan kartu NFC TapUlasan di meja kasir untuk mendongkrak review mingguan.
-                </li>
-              </ul>
-            </div>
-            <button
-              onClick={() => setAuditModalOpen(false)}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl"
-            >
-              Selesai
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 5. Rank Checker Simulation Modal */}
-      {rankModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0e121e] border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <h3 className="font-bold text-white text-base flex items-center gap-2">
-                <TrendingUp className="w-5 h-5 text-blue-400" />
-                Maps Local Rank Scan
-              </h3>
-              <button onClick={() => setRankModalOpen(false)} className="text-xs text-slate-400 hover:text-white">✕</button>
-            </div>
-            <div className="space-y-3 text-xs text-slate-300">
-              <p className="text-slate-400">
-                Peringkat lokal di Google Maps radius 3km untuk kategori bisnis Anda:
-              </p>
-              <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-center justify-between">
-                <span>Peringkat Saat Ini:</span>
-                <strong className="text-blue-400 text-sm font-bold">Top #3 di Maps Search</strong>
-              </div>
-              <p className="text-slate-400 leading-relaxed">
-                Toko dengan frekuensi ulasan ulasan baru yang stabil cenderung naik ke posisi Top #1 dalam 30 hari.
-              </p>
-            </div>
-            <button
-              onClick={() => setRankModalOpen(false)}
-              className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl"
-            >
-              Tutup
-            </button>
           </div>
         </div>
       )}

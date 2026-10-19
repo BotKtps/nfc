@@ -17,6 +17,30 @@
     code, .font-mono {
       font-family: 'JetBrains Mono', monospace;
     }
+    @media print {
+      body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      header, footer, nav, .no-print, button:not(.print-include) {
+        display: none !important;
+      }
+      #print-root {
+        display: block !important;
+        position: static !important;
+        width: 100% !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+      }
+      .page-break-avoid {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    }
   </style>
 </head>
 <body class="bg-[#07090e] text-slate-100 min-h-screen selection:bg-amber-500/30 selection:text-amber-200 antialiased overflow-x-hidden">
