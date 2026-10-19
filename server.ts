@@ -496,14 +496,45 @@ app.post('/api/cards/batch', checkAdminAuth, (req, res) => {
   res.json({ success: true, count: created.length, created });
 });
 
+// Helper to reliably find card by ID with case-insensitivity, trim, and formatting tolerance
+function findCardInDB(cardIdParam: string): Card | null {
+  if (!cardIdParam) return null;
+  const raw = decodeURIComponent(cardIdParam).trim().replace(/\/+$/, '');
+  if (!raw) return null;
+
+  if (cardsDB.has(raw)) return cardsDB.get(raw)!;
+  const upper = raw.toUpperCase();
+  if (cardsDB.has(upper)) return cardsDB.get(upper)!;
+  const dashFormatted = upper.replace(/\s+/g, '-').replace(/_+/g, '-');
+  if (cardsDB.has(dashFormatted)) return cardsDB.get(dashFormatted)!;
+
+  for (const [id, c] of cardsDB.entries()) {
+    if (id.toLowerCase() === raw.toLowerCase()) return c;
+    if (id.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() === raw.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()) {
+      return c;
+    }
+  }
+  return null;
+}
+
 // Public single card query (strictly for customer card setup & verification only)
 app.get('/api/cards/:cardId', (req, res) => {
   const { cardId } = req.params;
-  const card = cardsDB.get(cardId);
+  const card = findCardInDB(cardId);
   if (!card) {
-    return res.status(404).json({ error: 'Card not found' });
+    return res.status(404).json({ error: `Kartu "${cardId}" tidak ditemukan dalam sistem.` });
   }
-  res.json(card);
+  res.json({
+    success: true,
+    card,
+    card_id: card.card_id,
+    business_name: card.business_name,
+    gmaps_url: card.gmaps_url,
+    is_active: card.is_active,
+    scan_count: card.scan_count,
+    created_at: card.created_at,
+    updated_at: card.updated_at,
+  });
 });
 
 // Helper endpoint for resolving maps url / previewing generated writereview link
@@ -525,9 +556,9 @@ app.post('/api/cards/:cardId/setup', async (req, res) => {
   const { cardId } = req.params;
   const { business_name, gmaps_url } = req.body;
 
-  const card = cardsDB.get(cardId);
+  const card = findCardInDB(cardId);
   if (!card) {
-    return res.status(404).json({ error: 'Kartu tidak ditemukan dalam database.' });
+    return res.status(404).json({ error: `Kartu "${cardId}" tidak ditemukan dalam database.` });
   }
 
   if (!business_name || !gmaps_url) {
@@ -542,13 +573,15 @@ app.post('/api/cards/:cardId/setup', async (req, res) => {
     card.is_active = true;
     card.updated_at = new Date().toISOString();
 
-    cardsDB.set(cardId, card);
+    cardsDB.set(card.card_id, card);
     saveCards(cardsDB);
 
     res.json({ 
       success: true, 
       card,
-      setting_url: `/setup/${cardId}`,
+      card_id: card.card_id,
+      business_name: card.business_name,
+      setting_url: `/setup/${card.card_id}`,
       review_url: formattedUrl
     });
   } catch (err: any) {
@@ -559,7 +592,7 @@ app.post('/api/cards/:cardId/setup', async (req, res) => {
 
 app.post('/api/cards/:cardId/reset', checkAdminAuth, (req, res) => {
   const { cardId } = req.params;
-  const card = cardsDB.get(cardId);
+  const card = findCardInDB(cardId);
   if (!card) {
     return res.status(404).json({ error: 'Card not found' });
   }
@@ -569,7 +602,7 @@ app.post('/api/cards/:cardId/reset', checkAdminAuth, (req, res) => {
   card.is_active = false;
   card.updated_at = new Date().toISOString();
 
-  cardsDB.set(cardId, card);
+  cardsDB.set(card.card_id, card);
   saveCards(cardsDB);
 
   res.json({ success: true, card });
@@ -577,10 +610,11 @@ app.post('/api/cards/:cardId/reset', checkAdminAuth, (req, res) => {
 
 app.delete('/api/cards/:cardId', checkAdminAuth, (req, res) => {
   const { cardId } = req.params;
-  if (!cardsDB.has(cardId)) {
+  const card = findCardInDB(cardId);
+  if (!card) {
     return res.status(404).json({ error: 'Card not found' });
   }
-  cardsDB.delete(cardId);
+  cardsDB.delete(card.card_id);
   saveCards(cardsDB);
   res.json({ success: true });
 });
@@ -588,7 +622,7 @@ app.delete('/api/cards/:cardId', checkAdminAuth, (req, res) => {
 // NFC & QR Redirect Handler
 app.get('/r/:cardId', (req, res) => {
   const { cardId } = req.params;
-  const card = cardsDB.get(cardId);
+  const card = findCardInDB(cardId);
 
   if (!card) {
     return res.status(404).send(`
@@ -618,13 +652,13 @@ app.get('/r/:cardId', (req, res) => {
 
   // If card is not configured yet, direct to self-service setup page
   if (!card.is_active || !card.gmaps_url) {
-    return res.redirect(`/setup/${cardId}`);
+    return res.redirect(`/setup/${card.card_id}`);
   }
 
   // Increment scan count
   card.scan_count += 1;
   card.updated_at = new Date().toISOString();
-  cardsDB.set(cardId, card);
+  cardsDB.set(card.card_id, card);
   saveCards(cardsDB);
 
   // Redirect to official 5-star Google Review dialog
