@@ -166,6 +166,8 @@ export default function App() {
       });
       const data = await res.json();
       if (data.success) {
+        setSelectedCardIds([]);
+        setSearchTerm('');
         await fetchCards();
         setBatchModalOpen(false);
         alert(`Berhasil generate ${data.count} kartu baru!`);
@@ -184,7 +186,8 @@ export default function App() {
       const res = await fetch(`/api/cards/${cardId}/reset`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        fetchCards();
+        setSelectedCardIds(prev => prev.filter(id => id !== cardId));
+        await fetchCards();
       }
     } catch (err) {
       console.error('Error resetting card:', err);
@@ -354,48 +357,86 @@ export default function App() {
         </div>
       </header>
 
-      {/* VIEW 1: LANDING / INTRODUCTORY HOME */}
+      {/* VIEW 1: LANDING DASHBOARD & ADMIN LOGIN CARD */}
       {currentView === 'landing' && (
-        <main className="flex-1 max-w-4xl mx-auto px-4 py-20 flex flex-col items-center justify-center text-center">
-          <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-xs">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            <span>Platform Resmi TapUlasan BPP — NFC &amp; QR Code Ulasan Bintang 5</span>
+        <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col lg:flex-row gap-8 items-start justify-center">
+          {/* Left / Main Section: Introduction & Info Dashboard */}
+          <div className="flex-1 space-y-8">
+            <div className="inline-flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-semibold px-4 py-1.5 rounded-full shadow-xs">
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              <span>Platform Resmi TapUlasan BPP — NFC &amp; QR Code Ulasan Bintang 5</span>
+            </div>
+
+            <div className="space-y-4">
+              <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
+                Ubah Sentuhan Pelanggan Menjadi Reputasi Bintang 5 di Google Maps
+              </h2>
+              <p className="text-slate-600 text-base sm:text-lg leading-relaxed">
+                <strong className="text-slate-900">TapUlasan BPP</strong> adalah sistem kartu pintar NFC dan QR Code mandiri yang dirancang khusus untuk bisnis. Setiap kartu memiliki web pribadi mandiri (*self-service*), memungkinkan pemilik usaha mengatur tautan ulasan Google Maps mereka sendiri secara instan tanpa ribet.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+                <div className="w-10 h-10 bg-amber-100 text-amber-800 rounded-xl flex items-center justify-center font-bold text-lg">⚡</div>
+                <h3 className="font-bold text-slate-900 text-sm">1-Tap NFC &amp; QR</h3>
+                <p className="text-xs text-slate-500">Ketuk atau scan kartu dengan HP untuk membuka ulasan bintang 5 instan.</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+                <div className="w-10 h-10 bg-indigo-100 text-indigo-800 rounded-xl flex items-center justify-center font-bold text-lg">⚙️</div>
+                <h3 className="font-bold text-slate-900 text-sm">Web Setup Mandiri</h3>
+                <p className="text-xs text-slate-500">Tautan web pribadi yang dapat dikonfigurasi sendiri oleh pemilik bisnis.</p>
+              </div>
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-2">
+                <div className="w-10 h-10 bg-emerald-100 text-emerald-800 rounded-xl flex items-center justify-center font-bold text-lg">🖨️</div>
+                <h3 className="font-bold text-slate-900 text-sm">Pustaka Cetak A4</h3>
+                <p className="text-xs text-slate-500">Ekspor galeri kartu massal dalam format cetak A4 profesional.</p>
+              </div>
+            </div>
           </div>
 
-          <h2 className="text-4xl sm:text-6xl font-extrabold text-slate-900 tracking-tight max-w-3xl mb-6">
-            Ubah Sentuhan Pelanggan Menjadi Reputasi Bintang 5 di Google Maps
-          </h2>
-
-          <p className="text-slate-600 max-w-2xl text-base sm:text-lg mb-12 leading-relaxed">
-            <strong className="text-slate-900">TapUlasan BPP</strong> adalah sistem kartu pintar NFC dan QR Code mandiri yang dirancang khusus untuk bisnis. Setiap kartu memiliki web pribadi mandiri (*self-service*), memungkinkan pemilik usaha mengatur tautan ulasan Google Maps mereka sendiri secara instan tanpa ribet.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-3xl mb-12 text-left">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
-              <div className="w-10 h-10 bg-amber-100 text-amber-800 rounded-xl flex items-center justify-center font-bold text-lg">⚡</div>
-              <h3 className="font-bold text-slate-900 text-sm">1-Tap NFC &amp; QR Code</h3>
-              <p className="text-xs text-slate-500">Pelanggan cukup ketuk atau scan kartu dengan HP untuk langsung membuka form ulasan bintang 5.</p>
+          {/* Right Section: Separate Admin Login (admn-log) Card */}
+          <div className="w-full lg:w-96 bg-white rounded-3xl p-6 sm:p-8 shadow-xl border border-slate-200 shrink-0">
+            <div className="text-center mb-6">
+              <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-bold text-slate-900">Admin Login (admn-log)</h3>
+              <p className="text-xs text-slate-500 mt-1">Akses khusus pengelola untuk manajemen kartu.</p>
             </div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
-              <div className="w-10 h-10 bg-indigo-100 text-indigo-800 rounded-xl flex items-center justify-center font-bold text-lg">⚙️</div>
-              <h3 className="font-bold text-slate-900 text-sm">Web Setup Mandiri</h3>
-              <p className="text-xs text-slate-500">Setiap kartu memiliki tautan web pribadi yang dapat diatur sendiri oleh pemilik bisnis.</p>
-            </div>
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-2">
-              <div className="w-10 h-10 bg-emerald-100 text-emerald-800 rounded-xl flex items-center justify-center font-bold text-lg">🖨️</div>
-              <h3 className="font-bold text-slate-900 text-sm">Pustaka Cetak A4</h3>
-              <p className="text-xs text-slate-500">Admin dapat memilih dan mengekspor galeri kartu ke dalam format cetak A4 profesional.</p>
-            </div>
-          </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 w-full max-w-md">
-            <button
-              onClick={() => setCurrentView(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login')}
-              className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-8 rounded-2xl transition text-sm shadow-md flex items-center justify-center gap-2"
-            >
-              <Lock className="w-4 h-4 text-amber-400" />
-              <span>Masuk Admin Dashboard</span>
-            </button>
+            <form onSubmit={handleAdminLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
+                  PIN Admin
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={adminPin}
+                  onChange={(e) => setAdminPin(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+                {adminLoginError && (
+                  <p className="text-xs text-rose-600 font-medium mt-1.5">{adminLoginError}</p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded-xl transition text-sm shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Masuk Dashboard Admin</span>
+              </button>
+            </form>
+
+            <div className="mt-6 pt-6 border-t border-slate-100 text-center">
+              <p className="text-[11px] text-slate-400">
+                Data kartu NFC &amp; QR Code publik disembunyikan dan dienkripsi untuk keamanan penuh.
+              </p>
+            </div>
           </div>
         </main>
       )}
