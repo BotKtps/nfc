@@ -22,37 +22,123 @@
   background: #2e354a;
 }
 
-/* Print specific styles for QR sticker sheet & Standee card */
+/* =========================================================================
+   PRINT STYLES — neat, single-page, color-accurate standee / card output
+   (Single source of truth. The old inline block in index.html was removed
+   because the two conflicting rules produced a messy print result.)
+   ========================================================================= */
 @media print {
-  body {
-    background-color: white !important;
-    color: black !important;
+  /* 1. Page setup: A4 portrait with a safe margin */
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
   }
+
+  /* 2. Base reset — kill dark backgrounds, force accurate colors */
+  html,
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 3. Hide the entire app shell except the print modal (prevents blank pages).
+        Scoped with :has() so printing the normal page still works. */
+  .app-shell:has(.print-modal-backdrop) > *:not(.print-modal-backdrop) {
+    display: none !important;
+  }
+
+  /* 3b. Reset the app shell itself (dark bg + full height would paint the page black) */
+  .app-shell {
+    background: #ffffff !important;
+    min-height: 0 !important;
+    height: auto !important;
+  }
+
+  /* 4. Hide all non-printable chrome (buttons, controls, callouts, header/footer) */
   .no-print {
     display: none !important;
   }
   .print-only {
     display: block !important;
   }
-  .print-page-break {
-    page-break-inside: avoid;
-    break-inside: avoid;
+
+  /* 5. Neutralize the modal backdrop so it does not affect layout */
+  .print-modal-backdrop {
+    position: static !important;
+    inset: auto !important;
+    top: auto !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    min-height: 0 !important;
+    height: auto !important;
+    z-index: auto !important;
   }
-  /* Isolate print-root container when printing standee/card */
-  body * {
-    visibility: hidden;
-  }
-  #print-root, #print-root * {
-    visibility: visible;
-  }
-  #print-root {
-    position: absolute;
-    left: 50%;
-    top: 5%;
-    transform: translateX(-50%);
-    margin: 0 auto !important;
+
+  /* 6. Neutralize the modal card chrome (borders, shadow, dark bg, radius) */
+  .print-modal-shell {
+    background: transparent !important;
+    border: none !important;
     box-shadow: none !important;
-    border-color: #cbd5e1 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    width: 100% !important;
+    display: block !important;
+  }
+
+  /* 7. Stack the two-column grid (left controls are already hidden) */
+  .print-modal-grid {
+    display: block !important;
+    gap: 0 !important;
+  }
+
+  /* 8. The printable design: fixed physical size, centered, no page breaks */
+  #print-root {
+    display: block !important;
+    position: static !important;
+    width: 92mm !important;
+    max-width: 92mm !important;
+    margin: 0 auto !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border-radius: 6mm !important;
+    overflow: hidden !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 9. Preserve every color inside the design (blue wave, gold stars, QR) */
+  #print-root,
+  #print-root * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* 10. Keep any explicit page-break helper working */
+  .print-page-break,
+  .page-break-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }
 

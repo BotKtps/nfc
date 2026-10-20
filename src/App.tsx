@@ -926,7 +926,7 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-[#07090e] text-slate-100 font-sans selection:bg-amber-500/20 selection:text-amber-300">
+    <div className="app-shell min-h-screen bg-[#07090e] text-slate-100 font-sans selection:bg-amber-500/20 selection:text-amber-300">
       
       {/* ========================================================================= */}
       {/* CLEAN SLEEK NAVIGATION BAR (No print button, strictly Dashboard & Admin)   */}
@@ -1197,6 +1197,7 @@ export default function App() {
                   <div className="w-[78%] h-3.5 bg-gradient-to-b from-slate-200/90 to-slate-300/80 rounded-b-xl shadow-md border-t border-slate-300 relative -mt-0.5 mx-auto">
                     <div className="absolute inset-x-8 top-1 h-[2px] bg-white/70 rounded-full" />
                   </div>
+                </div>
 
 
 
@@ -2222,8 +2223,8 @@ export default function App() {
       {/* Persis sesuai foto referensi akrilik Google 4-warna & NFC                 */}
       {/* ========================================================================= */}
       {printCardModalOpen && selectedCardForPrint && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-          <div className="bg-[#0d101a] border border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl relative space-y-6 my-auto">
+        <div className="print-modal-backdrop fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="print-modal-shell bg-[#0d101a] border border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl relative space-y-6 my-auto">
             
             {/* Modal Header */}
             <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-3">
@@ -2268,7 +2269,7 @@ export default function App() {
             </div>
 
             {/* Modal Body: Left Controls, Right Real-Time Standee Card (Matching Attachment Image) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="print-modal-grid grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
               {/* Left Column: Quick Customizer (No-Print) */}
               <div className="no-print lg:col-span-5 space-y-4 text-xs">
