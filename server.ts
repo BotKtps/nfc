@@ -41,6 +41,16 @@ export interface PlaceResult {
 
 const ADMIN_PIN = '*kewQkb:#sm';
 
+// Minimal HTML escaping for safely embedding dynamic values into server-rendered pages
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function getDbFilePath(): string {
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const tmpPath = path.join('/tmp', 'cards_db.json');
@@ -732,8 +742,116 @@ app.get('/r/:cardId', (req, res) => {
   cardsDB.set(card.card_id, card);
   saveCards(cardsDB);
 
-  // Redirect to official 5-star Google Review dialog
-  return res.redirect(302, card.gmaps_url);
+  // ---------------------------------------------------------------------------
+  // Branded review gateway.
+  // NOTE ON "AUTO 5-STAR": Google does not expose any parameter that pre-selects
+  // a star rating on the review dialog (the old `&review=5` was a no-op), and
+  // pre-selecting a rating is against Google's review policy. What we CAN do is
+  // remove every point of friction: open the review dialog automatically and
+  // guide the customer with a clear 5-star prompt. That is what this page does.
+  // ---------------------------------------------------------------------------
+  const reviewUrl = card.gmaps_url;
+  const businessName = card.business_name || 'Bisnis Anda';
+  const safeReviewUrl = escapeHtml(reviewUrl);
+  const safeBusinessName = escapeHtml(businessName);
+
+  return res.status(200).send(`<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07090e">
+  <title>Beri Ulasan \u2022 ${safeBusinessName}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      min-height: 100%;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #14203a 0%, #07090e 55%, #05070b 100%);
+      color: #f1f5f9;
+      display: flex; align-items: center; justify-content: center;
+      padding: 24px 18px; text-align: center;
+    }
+    .wrap { width: 100%; max-width: 380px; }
+    .logo {
+      width: 60px; height: 60px; margin: 0 auto 18px; border-radius: 18px;
+      background: linear-gradient(135deg, #f59e0b, #b45309);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 12px 30px rgba(245, 158, 11, 0.25);
+    }
+    .logo svg { width: 30px; height: 30px; }
+    .stars { font-size: 40px; letter-spacing: 4px; color: #FBBC05; line-height: 1;
+      text-shadow: 0 4px 18px rgba(251, 188, 5, 0.35); animation: pop 0.6s ease-out; }
+    @keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    h1 { font-size: 22px; font-weight: 800; margin: 16px 0 6px; color: #ffffff; letter-spacing: -0.01em; }
+    .sub { font-size: 14px; color: #94a3b8; line-height: 1.5; }
+    .status {
+      display: inline-flex; align-items: center; gap: 8px; margin: 22px 0 4px;
+      font-size: 13px; color: #cbd5e1; font-weight: 600;
+    }
+    .spinner {
+      width: 16px; height: 16px; border: 2px solid rgba(148,163,184,0.35);
+      border-top-color: #f59e0b; border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin: 20px auto 0; padding: 16px 22px; width: 100%;
+      background: linear-gradient(135deg, #f59e0b, #d97706); color: #0b0e17;
+      font-weight: 800; font-size: 16px; text-decoration: none; border-radius: 16px;
+      box-shadow: 0 14px 34px rgba(245, 158, 11, 0.28);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn:active { transform: scale(0.97); }
+    .tip { font-size: 12px; color: #64748b; margin-top: 16px; line-height: 1.55; }
+    .brand { font-size: 11px; color: #475569; margin-top: 26px; letter-spacing: 0.03em; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0b0e17" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4.9 19.1a10 10 0 0 1 0-14.2" />
+        <path d="M8.5 15.5a5 5 0 0 1 0-7" />
+        <circle cx="12" cy="12" r="1.6" fill="#0b0e17" stroke="none" />
+        <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+        <path d="M19.1 4.9a10 10 0 0 1 0 14.2" />
+      </svg>
+    </div>
+
+    <div class="stars">\u2605\u2605\u2605\u2605\u2605</div>
+    <h1>${safeBusinessName}</h1>
+    <p class="sub">Terima kasih atas kunjungan Anda \u{1F64F}<br>Bantu kami dengan ulasan bintang 5!</p>
+
+    <div class="status">
+      <span class="spinner"></span>
+      <span>Membuka formulir ulasan Google\u2026</span>
+    </div>
+
+    <a class="btn" href="${safeReviewUrl}" rel="noopener">
+      \u2B50 Beri Ulasan Bintang 5
+    </a>
+
+    <p class="tip">
+      Jika halaman Google belum terbuka otomatis, ketuk tombol di atas.<br>
+      Lalu ketuk <strong>bintang ke-5</strong> dan kirim ulasan Anda.
+    </p>
+
+    <div class="brand">TapUlasan \u2022 Smart NFC &amp; QR Review Platform</div>
+  </div>
+
+  <script>
+    // Auto-open the Google review dialog to remove all friction for the customer.
+    (function () {
+      var target = ${JSON.stringify(reviewUrl).replace(/</g, '\\u003c')};
+      setTimeout(function () {
+        try { window.location.replace(target); }
+        catch (e) { window.location.href = target; }
+      }, 1500);
+    })();
+  </script>
+</body>
+</html>`);
 });
 
 // SPA catch-all for setup & admin routes

@@ -21,7 +21,6 @@ import {
   Layers,
   ArrowRight,
   LogOut,
-  Printer,
   CheckCircle2,
   AlertCircle,
   HelpCircle,
@@ -42,6 +41,7 @@ import {
   X
 } from 'lucide-react';
 import QRCode from 'qrcode';
+import { jsPDF } from 'jspdf';
 
 interface Card {
   card_id: string;
@@ -52,6 +52,328 @@ interface Card {
   created_at: string;
   updated_at: string;
 }
+
+// =============================================================================
+// PRINT / PDF RENDERING HELPERS (module level so they can be reused for single
+// card downloads as well as bulk multi-card PDF downloads)
+// =============================================================================
+type PrintFormat = 'standee_acrylic' | 'card_cr80';
+type PrintTheme = 'blue_wave' | 'google_quadrant';
+
+interface StandeeRenderConfig {
+  card: Card;
+  format: PrintFormat;
+  theme: PrintTheme;
+  headerLine1: string;
+  headerLine2: string;
+  tapText: string;
+  serialText: string;
+  showBusinessName: boolean;
+  qrDataUrl: string;
+}
+
+// 300 DPI is the standard for sharp print / acrylic production.
+const PRINT_DPI = 300;
+const MM_PER_INCH = 25.4;
+const pxToMm = (px: number) => (px / PRINT_DPI) * MM_PER_INCH;
+
+// Turn any business name into a safe file name.
+const safeFileName = (value: string) =>
+  (value || 'kartu')
+    .replace(/[^a-z0-9\-_]+/gi, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '') || 'kartu';
+
+// Build the review QR for a card (points to the card gateway / Google review).
+const generateQrForCard = async (card: Card): Promise<string> => {
+  const targetUrl = card.gmaps_url || `${window.location.origin}/r/${card.card_id}`;
+  return QRCode.toDataURL(targetUrl, {
+    width: 600,
+    margin: 1,
+    color: { dark: '#000000', light: '#ffffff' },
+  });
+};
+
+// Render a standee / pocket-card design onto a high-resolution (300 DPI) canvas.
+const renderStandeeCanvas = async (config: StandeeRenderConfig): Promise<HTMLCanvasElement> => {
+  const { card, format, theme, headerLine1, headerLine2, tapText, serialText, showBusinessName, qrDataUrl } = config;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context unavailable');
+
+  const isCard = format === 'card_cr80';
+  const width = isCard ? 1182 : 945;
+  const height = isCard ? 1182 : 1299;
+
+  canvas.width = width;
+  canvas.height = height;
+
+  if (!isCard) {
+    // ==========================================
+    // STANDALONE ACRYLIC STANDEE (SESUAI FOTO LAMPIRAN)
+    // ==========================================
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    if (theme === 'blue_wave') {
+      const waveBaseY = 460;
+
+      // Draw Top Blue Wave
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(width, 0);
+      ctx.lineTo(width, waveBaseY - 20);
+      // Scallop curve arching up in center for Google G logo
+      ctx.bezierCurveTo(width * 0.72, waveBaseY + 60, width * 0.62, waveBaseY - 70, width * 0.5, waveBaseY - 70);
+      ctx.bezierCurveTo(width * 0.38, waveBaseY - 70, width * 0.28, waveBaseY + 60, 0, waveBaseY - 20);
+      ctx.closePath();
+      ctx.fillStyle = '#0866d6';
+      ctx.fill();
+      ctx.restore();
+
+      // Header text 1: "MAKE OUR DAY,"
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '800 52px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(headerLine1 || 'MAKE OUR DAY,', width / 2, 190);
+
+      // Header text 2: "LEAVE US A REVIEW!"
+      ctx.font = '900 66px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(headerLine2 || 'LEAVE US A REVIEW!', width / 2, 275);
+
+      // Business Name subtitle in header if enabled
+      if (showBusinessName && card.business_name) {
+        ctx.font = 'bold 30px "Plus Jakarta Sans", sans-serif';
+        ctx.fillStyle = '#dbeafe';
+        ctx.fillText(`\u2022 ${card.business_name.toUpperCase()} \u2022`, width / 2, 340);
+      }
+
+      // Circular Disc for Google "G"
+      const discX = width / 2;
+      const discY = waveBaseY - 70;
+      const discRadius = 88;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(discX, discY, discRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 6;
+      ctx.fill();
+      ctx.restore();
+
+      // Draw Google "G" official SVG
+      const gSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="120" height="120">
+        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+      </svg>`;
+      const gImg = new Image();
+      gImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(gSvg);
+      await new Promise((res) => { gImg.onload = res; });
+      ctx.drawImage(gImg, discX - 60, discY - 60, 120, 120);
+
+      // 5 Golden Stars directly under Google "G"
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#FBBC05';
+      ctx.font = '84px sans-serif';
+      ctx.fillText('\u2605\u2605\u2605\u2605\u2605', width / 2, 600);
+
+      // Dual Action Area (NFC Hand vs QR Code)
+      const leftX = width * 0.28;
+      const rightX = width * 0.72;
+      const midY = 1050;
+
+      // Left: Hand holding phone with NFC waves SVG
+      const handSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="240" height="240" fill="none">
+        <g transform="translate(14, 8)">
+          <g transform="rotate(-10 32 45)">
+            <rect x="12" y="10" width="38" height="66" rx="6" stroke="#0f172a" stroke-width="3" fill="#ffffff" />
+            <line x1="20" y1="16" x2="42" y2="16" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" />
+            <line x1="26" y1="70" x2="36" y2="70" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" />
+            <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+            <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+            <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          </g>
+          <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          <path d="M 4 65 L 0 80" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+          <path d="M 26 84 L 20 95" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+        </g>
+      </svg>`;
+      const handImg = new Image();
+      handImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(handSvg);
+      await new Promise((res) => { handImg.onload = res; });
+      ctx.drawImage(handImg, leftX - 120, midY - 140, 240, 240);
+
+      // "Tap or Scan" text
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 44px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(tapText || 'Tap or Scan', leftX, midY + 160);
+
+      // Right: QR Code
+      const qrSize = 380;
+      if (qrDataUrl) {
+        const qrImg = new Image();
+        qrImg.src = qrDataUrl;
+        await new Promise((res) => { qrImg.onload = res; });
+        ctx.drawImage(qrImg, rightX - (qrSize / 2), midY - 170, qrSize, qrSize);
+      }
+
+      // Serial ID badge under QR
+      const serialLabel = serialText || card.card_id;
+      ctx.save();
+      ctx.font = 'bold 32px monospace';
+      const badgeMetrics = ctx.measureText(serialLabel);
+      const bW = badgeMetrics.width + 44;
+      const bH = 50;
+      const bY = midY + 235;
+
+      ctx.fillStyle = '#f1f5f9';
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.roundRect(rightX - (bW / 2), bY - (bH / 2), bW, bH, 12);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#334155';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(serialLabel, rightX, bY);
+      ctx.restore();
+
+      // Subtle Bottom Card Border
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(4, 4, width - 8, height - 8, 48);
+      ctx.stroke();
+
+      // Footer Text
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('Built-in NFC & QR Code \u2022 Tap/Scan to Review', width / 2, height - 80);
+
+    } else {
+      // Google 4-Quadrant Mode (Alternative)
+      const midX = width / 2;
+      const midY = height / 2;
+      ctx.fillStyle = '#FBBC05'; ctx.fillRect(0, 0, midX, midY);
+      ctx.fillStyle = '#EA4335'; ctx.fillRect(midX, 0, midX, midY);
+      ctx.fillStyle = '#34A853'; ctx.fillRect(0, midY, midX, midY);
+      ctx.fillStyle = '#4285F4'; ctx.fillRect(midX, midY, midX, midY);
+
+      const inset = 60;
+      const cardW = width - (inset * 2);
+      const cardH = height - (inset * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.roundRect(inset, inset, cardW, cardH, 48);
+      ctx.fill();
+
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 50px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(headerLine1 || 'MAKE OUR DAY,', width / 2, inset + 180);
+      ctx.font = 'bold 58px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText(headerLine2 || 'LEAVE US A REVIEW!', width / 2, inset + 250);
+
+      ctx.fillStyle = '#FBBC05';
+      ctx.font = '72px sans-serif';
+      ctx.fillText('\u2605\u2605\u2605\u2605\u2605', width / 2, inset + 340);
+
+      // QR + serial so the alternative theme is also usable
+      if (qrDataUrl) {
+        const qrImg = new Image();
+        qrImg.src = qrDataUrl;
+        await new Promise((res) => { qrImg.onload = res; });
+        ctx.drawImage(qrImg, width / 2 - 170, inset + 420, 340, 340);
+      }
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 34px monospace';
+      ctx.fillText(serialText || card.card_id, width / 2, inset + 830);
+    }
+  } else {
+    // ==========================================
+    // CR80 POCKET CARD FORMAT (Landscape)
+    // ==========================================
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+
+    // Top blue curved banner
+    ctx.fillStyle = '#0866d6';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(width, 0);
+    ctx.lineTo(width, 140);
+    ctx.bezierCurveTo(width * 0.7, 180, width * 0.55, 120, width * 0.45, 120);
+    ctx.bezierCurveTo(width * 0.35, 120, width * 0.2, 170, 0, 140);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(headerLine1 || 'MAKE OUR DAY,', 50, 60);
+    ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(headerLine2 || 'LEAVE US A REVIEW!', 50, 105);
+
+    // 5 Gold Stars
+    ctx.fillStyle = '#FBBC05';
+    ctx.font = '42px sans-serif';
+    ctx.fillText('\u2605\u2605\u2605\u2605\u2605', 50, 205);
+
+    // Business Name
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText((card.business_name || 'BISNIS ANDA').toUpperCase(), 50, 265);
+
+    // NFC Tap Indicator
+    ctx.fillStyle = '#0866d6';
+    ctx.font = 'bold 28px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText(`\u26a1 ${tapText || 'Tap or Scan'}`, 50, 340);
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = 'bold 22px monospace';
+    ctx.fillText('ID: ' + (serialText || card.card_id), 50, 390);
+
+    // QR Code right side
+    if (qrDataUrl) {
+      const qrImg = new Image();
+      qrImg.src = qrDataUrl;
+      await new Promise((res) => { qrImg.onload = res; });
+      ctx.drawImage(qrImg, width - 360, 100, 300, 300);
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#0f172a';
+      ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('Scan QR Kamera', width - 210, 435);
+    }
+
+    // Card Border
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(8, 8, width - 16, height - 16, 28);
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '500 20px "Plus Jakarta Sans", sans-serif';
+    ctx.fillText('Direct Google Review \u2022 Built-in NFC & QR Code', 50, height - 40);
+  }
+
+  return canvas;
+};
 
 export default function App() {
   // Navigation & View state:
@@ -116,6 +438,12 @@ export default function App() {
   const [printSerialText, setPrintSerialText] = useState<string>('');
   const [printShowBusinessName, setPrintShowBusinessName] = useState<boolean>(true);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
+
+  // Bulk PDF download (select many cards -> one multi-page PDF for stickers/acrylic)
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [isBulkDownloading, setIsBulkDownloading] = useState(false);
+  const [bulkDownloadProgress, setBulkDownloadProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkFormat, setBulkFormat] = useState<PrintFormat>('standee_acrylic');
 
   // Interactive review growth calculator (Landing page)
   const [dailyCustomers, setDailyCustomers] = useState(60);
@@ -635,282 +963,116 @@ export default function App() {
     }
   };
 
-  // Download Standee Image as 300 DPI High Resolution PNG
+  // Build the render config from the current modal state.
+  const buildModalRenderConfig = (card: Card): StandeeRenderConfig => ({
+    card,
+    format: printFormat,
+    theme: printDesignTheme,
+    headerLine1: printHeaderLine1,
+    headerLine2: printHeaderLine2,
+    tapText: printTapText,
+    serialText: printSerialText || card.card_id,
+    showBusinessName: printShowBusinessName,
+    qrDataUrl: cardPrintQrUrl,
+  });
+
+  // Download the currently previewed design as a high-resolution PNG (300 DPI).
   const handleDownloadCardStandeeImage = async () => {
     if (!selectedCardForPrint) return;
     setIsDownloadingImage(true);
     try {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const isCard = printFormat === 'card_cr80';
-      const width = isCard ? 1182 : 945;
-      const height = isCard ? 1182 : 1299;
-
-      canvas.width = width;
-      canvas.height = height;
-
-      if (!isCard) {
-        // STANDALONE ACRYLIC STANDEE (SESUAI FOTO LAMPIRAN)
-        // 1. Background White Card
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-
-        if (printDesignTheme === 'blue_wave') {
-          // ==========================================
-          // DESAIN SESUAI FOTO LAMPIRAN: BLUE WAVE HEADER
-          // ==========================================
-          const waveBaseY = 460;
-          
-          // Draw Top Blue Wave
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(width, 0);
-          ctx.lineTo(width, waveBaseY - 20);
-          // Scallop curve arching up in center for Google G logo
-          ctx.bezierCurveTo(width * 0.72, waveBaseY + 60, width * 0.62, waveBaseY - 70, width * 0.5, waveBaseY - 70);
-          ctx.bezierCurveTo(width * 0.38, waveBaseY - 70, width * 0.28, waveBaseY + 60, 0, waveBaseY - 20);
-          ctx.closePath();
-          ctx.fillStyle = '#0866d6';
-          ctx.fill();
-          ctx.restore();
-
-          // Header text 1: "MAKE OUR DAY,"
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '800 52px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText(printHeaderLine1 || 'MAKE OUR DAY,', width / 2, 190);
-
-          // Header text 2: "LEAVE US A REVIEW!"
-          ctx.font = '900 66px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText(printHeaderLine2 || 'LEAVE US A REVIEW!', width / 2, 275);
-
-          // Business Name subtitle in header if enabled
-          if (printShowBusinessName && selectedCardForPrint.business_name) {
-            ctx.font = 'bold 30px "Plus Jakarta Sans", sans-serif';
-            ctx.fillStyle = '#dbeafe';
-            ctx.fillText(`• ${selectedCardForPrint.business_name.toUpperCase()} •`, width / 2, 340);
-          }
-
-          // Circular Disc for Google "G"
-          const discX = width / 2;
-          const discY = waveBaseY - 70;
-          const discRadius = 88;
-          ctx.save();
-          ctx.beginPath();
-          ctx.arc(discX, discY, discRadius, 0, Math.PI * 2);
-          ctx.fillStyle = '#ffffff';
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
-          ctx.shadowBlur = 24;
-          ctx.shadowOffsetY = 6;
-          ctx.fill();
-          ctx.restore();
-
-          // Draw Google "G" official SVG
-          const gSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="120" height="120">
-            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-            <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-          </svg>`;
-          const gImg = new Image();
-          gImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(gSvg);
-          await new Promise((res) => { gImg.onload = res; });
-          ctx.drawImage(gImg, discX - 60, discY - 60, 120, 120);
-
-          // 5 Golden Stars directly under Google "G"
-          ctx.textAlign = 'center';
-          ctx.fillStyle = '#FBBC05';
-          ctx.font = '84px sans-serif';
-          ctx.fillText('★★★★★', width / 2, 600);
-
-          // Dual Action Area (NFC Hand vs QR Code)
-          const leftX = width * 0.28;
-          const rightX = width * 0.72;
-          const midY = 1050;
-
-          // Left: Hand holding phone with NFC waves SVG
-          const handSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="240" height="240" fill="none">
-            <g transform="translate(14, 8)">
-              <g transform="rotate(-10 32 45)">
-                <rect x="12" y="10" width="38" height="66" rx="6" stroke="#0f172a" stroke-width="3" fill="#ffffff" />
-                <line x1="20" y1="16" x2="42" y2="16" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" />
-                <line x1="26" y1="70" x2="36" y2="70" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" />
-                <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-                <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-                <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              </g>
-              <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              <path d="M 4 65 L 0 80" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-              <path d="M 26 84 L 20 95" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
-            </g>
-          </svg>`;
-          const handImg = new Image();
-          handImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(handSvg);
-          await new Promise((res) => { handImg.onload = res; });
-          ctx.drawImage(handImg, leftX - 120, midY - 140, 240, 240);
-
-          // "Tap or Scan" text
-          ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 44px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText(printTapText || 'Tap or Scan', leftX, midY + 160);
-
-          // Right: QR Code
-          const qrSize = 380;
-          if (cardPrintQrUrl) {
-            const qrImg = new Image();
-            qrImg.src = cardPrintQrUrl;
-            await new Promise((res) => { qrImg.onload = res; });
-            ctx.drawImage(qrImg, rightX - (qrSize / 2), midY - 170, qrSize, qrSize);
-          }
-
-          // Serial ID badge under QR
-          const serialText = printSerialText || selectedCardForPrint.card_id;
-          ctx.save();
-          ctx.font = 'bold 32px monospace';
-          const badgeMetrics = ctx.measureText(serialText);
-          const bW = badgeMetrics.width + 44;
-          const bH = 50;
-          const bY = midY + 235;
-
-          ctx.fillStyle = '#f1f5f9';
-          ctx.strokeStyle = '#cbd5e1';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.roundRect(rightX - (bW / 2), bY - (bH / 2), bW, bH, 12);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.fillStyle = '#334155';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.fillText(serialText, rightX, bY);
-          ctx.restore();
-
-          // Subtle Bottom Card Border
-          ctx.strokeStyle = '#e2e8f0';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.roundRect(4, 4, width - 8, height - 8, 48);
-          ctx.stroke();
-
-          // Footer Text
-          ctx.fillStyle = '#94a3b8';
-          ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText('Built-in NFC & QR Code • Tap/Scan to Review', width / 2, height - 80);
-
-        } else {
-          // Google 4-Quadrant Mode (Alternative)
-          const midX = width / 2;
-          const midY = height / 2;
-          ctx.fillStyle = '#FBBC05'; ctx.fillRect(0, 0, midX, midY);
-          ctx.fillStyle = '#EA4335'; ctx.fillRect(midX, 0, midX, midY);
-          ctx.fillStyle = '#34A853'; ctx.fillRect(0, midY, midX, midY);
-          ctx.fillStyle = '#4285F4'; ctx.fillRect(midX, midY, midX, midY);
-
-          const inset = 60;
-          const cardW = width - (inset * 2);
-          const cardH = height - (inset * 2);
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.roundRect(inset, inset, cardW, cardH, 48);
-          ctx.fill();
-
-          ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 50px "Plus Jakarta Sans", sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText(printHeaderLine1 || 'MAKE OUR DAY,', width / 2, inset + 180);
-          ctx.font = 'bold 58px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText(printHeaderLine2 || 'LEAVE US A REVIEW!', width / 2, inset + 250);
-
-          ctx.fillStyle = '#FBBC05';
-          ctx.font = '72px sans-serif';
-          ctx.fillText('★★★★★', width / 2, inset + 340);
-        }
-      } else {
-        // CR80 POCKET CARD FORMAT (Landscape)
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, width, height);
-
-        // Top blue curved banner
-        ctx.fillStyle = '#0866d6';
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.lineTo(width, 0);
-        ctx.lineTo(width, 140);
-        ctx.bezierCurveTo(width * 0.7, 180, width * 0.55, 120, width * 0.45, 120);
-        ctx.bezierCurveTo(width * 0.35, 120, width * 0.2, 170, 0, 140);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 28px "Plus Jakarta Sans", sans-serif';
-        ctx.textAlign = 'left';
-        ctx.fillText(printHeaderLine1 || 'MAKE OUR DAY,', 50, 60);
-        ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText(printHeaderLine2 || 'LEAVE US A REVIEW!', 50, 105);
-
-        // 5 Gold Stars
-        ctx.fillStyle = '#FBBC05';
-        ctx.font = '42px sans-serif';
-        ctx.fillText('★★★★★', 50, 205);
-
-        // Business Name
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText((selectedCardForPrint.business_name || 'BISNIS ANDA').toUpperCase(), 50, 265);
-
-        // NFC Tap Indicator
-        ctx.fillStyle = '#0866d6';
-        ctx.font = 'bold 28px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText(`⚡ ${printTapText || 'Tap or Scan'}`, 50, 340);
-
-        ctx.fillStyle = '#64748b';
-        ctx.font = 'bold 22px monospace';
-        ctx.fillText('ID: ' + (printSerialText || selectedCardForPrint.card_id), 50, 390);
-
-        // QR Code right side
-        if (cardPrintQrUrl) {
-          const qrImg = new Image();
-          qrImg.src = cardPrintQrUrl;
-          await new Promise((res) => { qrImg.onload = res; });
-          ctx.drawImage(qrImg, width - 360, 100, 300, 300);
-
-          ctx.textAlign = 'center';
-          ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText('Scan QR Kamera', width - 210, 435);
-        }
-
-        // Card Border
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.roundRect(8, 8, width - 16, height - 16, 28);
-        ctx.stroke();
-
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '500 20px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Direct Google Review • Built-in NFC & QR Code', 50, height - 40);
-      }
-
-      // Download PNG file
+      const canvas = await renderStandeeCanvas(buildModalRenderConfig(selectedCardForPrint));
       const link = document.createElement('a');
-      link.download = `Standee_Google_Review_${(selectedCardForPrint.business_name || selectedCardForPrint.card_id).replace(/\s+/g, '_')}.png`;
+      link.download = `Standee_Google_Review_${safeFileName(selectedCardForPrint.business_name || selectedCardForPrint.card_id)}.png`;
       link.href = canvas.toDataURL('image/png');
       link.click();
     } catch (err) {
       console.error('Error generating image:', err);
     } finally {
       setIsDownloadingImage(false);
+    }
+  };
+
+  // Download the currently previewed design as a print-ready PDF (exact 300 DPI size).
+  const handleDownloadCardPdf = async () => {
+    if (!selectedCardForPrint) return;
+    setIsDownloadingImage(true);
+    try {
+      const canvas = await renderStandeeCanvas(buildModalRenderConfig(selectedCardForPrint));
+      const wMm = pxToMm(canvas.width);
+      const hMm = pxToMm(canvas.height);
+      const orientation = wMm > hMm ? 'landscape' : 'portrait';
+      const pdf = new jsPDF({ unit: 'mm', format: [wMm, hMm], orientation, compress: true });
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, wMm, hMm, undefined, 'FAST');
+      pdf.save(`Standee_Google_Review_${safeFileName(selectedCardForPrint.business_name || selectedCardForPrint.card_id)}.pdf`);
+    } catch (err) {
+      console.error('Error generating PDF:', err);
+    } finally {
+      setIsDownloadingImage(false);
+    }
+  };
+
+  // Toggle a single card in/out of the bulk selection.
+  const toggleCardSelection = (cardId: string) => {
+    setSelectedCardIds((prev) =>
+      prev.includes(cardId) ? prev.filter((id) => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  // Select / deselect every card currently visible (respects search + filter).
+  const toggleSelectAllVisible = () => {
+    const visibleIds = filteredAdminCards.map((c) => c.card_id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedCardIds.includes(id));
+    if (allSelected) {
+      setSelectedCardIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedCardIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  // Download MANY selected cards as ONE multi-page PDF (1 card per page).
+  // Perfect for batch sticker printing and acrylic production.
+  const handleBulkDownloadPdf = async () => {
+    const cards = adminCards.filter((c) => selectedCardIds.includes(c.card_id));
+    if (cards.length === 0) return;
+    setIsBulkDownloading(true);
+    setBulkDownloadProgress({ done: 0, total: cards.length });
+    try {
+      let pdf: jsPDF | null = null;
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i];
+        const qrDataUrl = await generateQrForCard(card);
+        const canvas = await renderStandeeCanvas({
+          card,
+          format: bulkFormat,
+          theme: 'blue_wave',
+          headerLine1: 'MAKE OUR DAY,',
+          headerLine2: 'LEAVE US A REVIEW!',
+          tapText: 'Tap or Scan',
+          serialText: card.card_id,
+          showBusinessName: true,
+          qrDataUrl,
+        });
+        const wMm = pxToMm(canvas.width);
+        const hMm = pxToMm(canvas.height);
+        const orientation = wMm > hMm ? 'landscape' : 'portrait';
+        if (!pdf) {
+          pdf = new jsPDF({ unit: 'mm', format: [wMm, hMm], orientation, compress: true });
+        } else {
+          pdf.addPage([wMm, hMm], orientation);
+        }
+        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, wMm, hMm, undefined, 'FAST');
+        setBulkDownloadProgress({ done: i + 1, total: cards.length });
+      }
+      if (pdf) {
+        const label = bulkFormat === 'card_cr80' ? 'Kartu_CR80' : 'Standee_Akrilik';
+        pdf.save(`TapUlasan_${label}_${cards.length}_Kartu.pdf`);
+      }
+    } catch (err) {
+      console.error('Error generating bulk PDF:', err);
+    } finally {
+      setIsBulkDownloading(false);
+      setBulkDownloadProgress(null);
     }
   };
 
@@ -926,7 +1088,7 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-[#07090e] text-slate-100 font-sans selection:bg-amber-500/20 selection:text-amber-300">
+    <div className="app-shell min-h-screen bg-[#07090e] text-slate-100 font-sans selection:bg-amber-500/20 selection:text-amber-300">
       
       {/* ========================================================================= */}
       {/* CLEAN SLEEK NAVIGATION BAR (No print button, strictly Dashboard & Admin)   */}
@@ -1197,6 +1359,7 @@ export default function App() {
                   <div className="w-[78%] h-3.5 bg-gradient-to-b from-slate-200/90 to-slate-300/80 rounded-b-xl shadow-md border-t border-slate-300 relative -mt-0.5 mx-auto">
                     <div className="absolute inset-x-8 top-1 h-[2px] bg-white/70 rounded-full" />
                   </div>
+                </div>
 
 
 
@@ -1555,8 +1718,8 @@ export default function App() {
                       }}
                       className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95"
                     >
-                      <Printer className="w-4 h-4" />
-                      <span>Cetak Standee Akrilik Meja</span>
+                      <Download className="w-4 h-4" />
+                      <span>Download Standee Akrilik (PDF)</span>
                     </button>
                   </div>
 
@@ -1689,7 +1852,7 @@ export default function App() {
                 </div>
                 <h2 className="text-xl font-bold text-white tracking-tight">Login Portal Pengelola</h2>
                 <p className="text-xs text-slate-400">
-                  Area terenkripsi untuk manajemen kartu dan cetak standee ulasan.
+                  Area terenkripsi untuk manajemen kartu dan download standee ulasan (PDF).
                 </p>
               </div>
 
@@ -1850,6 +2013,69 @@ export default function App() {
               </div>
             </div>
 
+            {/* Bulk PDF Download Action Bar (appears when cards are selected) */}
+            {selectedCardIds.length > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 sm:p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-sm shrink-0">
+                    {selectedCardIds.length}
+                  </div>
+                  <div>
+                    <div className="text-sm font-bold text-white">
+                      {selectedCardIds.length} kartu dipilih
+                    </div>
+                    <div className="text-[11px] text-slate-400 leading-tight">
+                      Diunduh jadi 1 file PDF (1 kartu per halaman) — siap untuk cetak sticker &amp; akrilik.
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {/* Output format toggle */}
+                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                    <button
+                      onClick={() => setBulkFormat('standee_acrylic')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        bulkFormat === 'standee_acrylic' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Standee Akrilik
+                    </button>
+                    <button
+                      onClick={() => setBulkFormat('card_cr80')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                        bulkFormat === 'card_cr80' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      Kartu CR80
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleBulkDownloadPdf}
+                    disabled={isBulkDownloading}
+                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                  >
+                    {isBulkDownloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    <span>
+                      {isBulkDownloading && bulkDownloadProgress
+                        ? `Memproses ${bulkDownloadProgress.done}/${bulkDownloadProgress.total}...`
+                        : 'Download PDF Terpilih'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setSelectedCardIds([])}
+                    disabled={isBulkDownloading}
+                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Batal</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Admin Cards Table */}
             {/* Admin Cards Responsive List & Table */}
             <div className="bg-[#0e121e] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
@@ -1859,17 +2085,26 @@ export default function App() {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#121624] text-slate-400 uppercase tracking-wider border-b border-slate-800">
                     <tr>
+                      <th className="py-3 px-3 w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="Pilih semua kartu"
+                          checked={filteredAdminCards.length > 0 && filteredAdminCards.every((c) => selectedCardIds.includes(c.card_id))}
+                          onChange={toggleSelectAllVisible}
+                          className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                        />
+                      </th>
                       <th className="py-3 px-4">Card ID</th>
                       <th className="py-3 px-4">Bisnis Pelanggan</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4 text-center">Scan</th>
-                      <th className="py-3 px-4 text-right">Aksi & Cetak</th>
+                      <th className="py-3 px-4 text-right">Aksi &amp; PDF</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800">
                     {filteredAdminCards.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-12 text-center text-slate-500">
+                        <td colSpan={6} className="py-12 text-center text-slate-500">
                           {adminCards.length === 0 ? (
                             <div className="space-y-3">
                               <p>Database kartu masih kosong.</p>
@@ -1887,7 +2122,21 @@ export default function App() {
                       </tr>
                     ) : (
                       filteredAdminCards.map((card) => (
-                        <tr key={card.card_id} className="hover:bg-slate-900/50 transition-colors">
+                        <tr
+                          key={card.card_id}
+                          className={`transition-colors ${
+                            selectedCardIds.includes(card.card_id) ? 'bg-amber-500/5' : 'hover:bg-slate-900/50'
+                          }`}
+                        >
+                          <td className="py-3 px-3">
+                            <input
+                              type="checkbox"
+                              aria-label={`Pilih ${card.card_id}`}
+                              checked={selectedCardIds.includes(card.card_id)}
+                              onChange={() => toggleCardSelection(card.card_id)}
+                              className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                            />
+                          </td>
                           <td className="py-3 px-4 font-mono font-bold text-amber-400">
                             {card.card_id}
                           </td>
@@ -1962,11 +2211,11 @@ export default function App() {
                               {/* ========================================================= */}
                               <button
                                 onClick={() => openCardPrintModal(card)}
-                                title="Cetak Standee Google Review (Sesuai Desain)"
+                                title="Download Desain PDF (Standee Akrilik / Kartu CR80)"
                                 className="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 hover:text-amber-300 border border-amber-500/30 flex items-center gap-1.5 transition-all font-semibold text-xs cursor-pointer shadow-sm active:scale-95"
                               >
-                                <Printer className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Cetak</span>
+                                <Download className="w-3.5 h-3.5 text-amber-400" />
+                                <span>PDF</span>
                               </button>
 
                               {/* TOMBOL HAPUS KARTU */}
@@ -2005,11 +2254,31 @@ export default function App() {
                     )}
                   </div>
                 ) : (
-                  filteredAdminCards.map((card) => (
+                  <>
+                  <div className="flex items-center justify-between px-4 py-2.5 bg-[#121624]">
+                    <label className="flex items-center gap-2 text-xs text-slate-300 font-medium cursor-pointer">
+                      <input
+                        type="checkbox"
+                        aria-label="Pilih semua kartu"
+                        checked={filteredAdminCards.length > 0 && filteredAdminCards.every((c) => selectedCardIds.includes(c.card_id))}
+                        onChange={toggleSelectAllVisible}
+                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                      />
+                      Pilih Semua ({filteredAdminCards.length})
+                    </label>
+                  </div>
+                  {filteredAdminCards.map((card) => (
                     <div key={card.card_id} className="p-4 space-y-3">
                       {/* Top Row: ID, status, scan count */}
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            aria-label={`Pilih ${card.card_id}`}
+                            checked={selectedCardIds.includes(card.card_id)}
+                            onChange={() => toggleCardSelection(card.card_id)}
+                            className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                          />
                           <span className="font-mono font-bold text-amber-400 text-sm">{card.card_id}</span>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
                             card.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
@@ -2066,13 +2335,13 @@ export default function App() {
                             <RotateCcw className="w-4 h-4" />
                           </button>
                         )}
-                        {/* TOMBOL CETAK DI SAMPING TOMBOL HAPUS */}
+                        {/* TOMBOL DOWNLOAD PDF DI SAMPING TOMBOL HAPUS */}
                         <button
                           onClick={() => openCardPrintModal(card)}
                           className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/30 cursor-pointer active:scale-95 transition-all shadow-sm"
                         >
-                          <Printer className="w-4 h-4 text-amber-400" />
-                          <span>Cetak Desain</span>
+                          <Download className="w-4 h-4 text-amber-400" />
+                          <span>PDF</span>
                         </button>
                         {/* TOMBOL HAPUS */}
                         <button
@@ -2084,7 +2353,8 @@ export default function App() {
                         </button>
                       </div>
                     </div>
-                  ))
+                  ))}
+                  </>
                 )}
               </div>
 
@@ -2222,15 +2492,15 @@ export default function App() {
       {/* Persis sesuai foto referensi akrilik Google 4-warna & NFC                 */}
       {/* ========================================================================= */}
       {printCardModalOpen && selectedCardForPrint && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
-          <div className="bg-[#0d101a] border border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl relative space-y-6 my-auto">
+        <div className="print-modal-backdrop fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="print-modal-shell bg-[#0d101a] border border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl relative space-y-6 my-auto">
             
             {/* Modal Header */}
             <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-3">
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold text-amber-400">
-                  <Printer className="w-4 h-4" />
-                  <span>Cetak Standee Display Google Review</span>
+                  <Download className="w-4 h-4" />
+                  <span>Download Desain Standee Google Review (PDF)</span>
                 </div>
                 <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight mt-0.5">
                   Format Display Akrilik Meja & Kartu Kasir
@@ -2243,16 +2513,17 @@ export default function App() {
               {/* Action Buttons & Close */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => window.print()}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                  onClick={handleDownloadCardPdf}
+                  disabled={isDownloadingImage}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
                 >
-                  <Printer className="w-4 h-4" />
-                  <span>Cetak Sekarang</span>
+                  {isDownloadingImage ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  <span>Download PDF</span>
                 </button>
                 <button
                   onClick={handleDownloadCardStandeeImage}
                   disabled={isDownloadingImage}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors"
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60"
                 >
                   {isDownloadingImage ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" /> : <Download className="w-3.5 h-3.5 text-amber-400" />}
                   <span>PNG 300 DPI</span>
@@ -2268,7 +2539,7 @@ export default function App() {
             </div>
 
             {/* Modal Body: Left Controls, Right Real-Time Standee Card (Matching Attachment Image) */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="print-modal-grid grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
               
               {/* Left Column: Quick Customizer (No-Print) */}
               <div className="no-print lg:col-span-5 space-y-4 text-xs">
@@ -2492,10 +2763,10 @@ export default function App() {
                   <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-1">
                     <div className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>Standar Cetak Akrilik Presisi 300 DPI</span>
+                      <span>Standar Cetak Akrilik Presisi 300 DPI (PDF)</span>
                     </div>
                     <p className="text-[10px] text-slate-300 leading-relaxed">
-                      Lengkungan wave biru Google, logo resmi 4-warna Google, 5 bintang emas, dan barcode QR akan dicetak tajam tanpa pecah.
+                      Lengkungan wave biru Google, logo resmi 4-warna Google, 5 bintang emas, dan barcode QR akan diunduh tajam tanpa pecah dalam file PDF siap cetak.
                     </p>
                   </div>
                 </div>
@@ -2741,7 +3012,7 @@ export default function App() {
                 </div>
 
                 <div className="no-print text-[11px] text-slate-400 mt-3 text-center">
-                  * Tampilan di atas adalah ukuran presisi yang langsung tercetak pada printer / file gambar 300 DPI.
+                  * Tampilan di atas adalah ukuran presisi 300 DPI yang diunduh sebagai file PDF (siap cetak sticker &amp; akrilik).
                 </div>
               </div>
 
