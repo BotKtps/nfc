@@ -22,7 +22,7 @@
   background: #2e354a;
 }
 
-/* Print specific styles for QR sticker sheet */
+/* Print specific styles for QR sticker sheet & Standee card */
 @media print {
   body {
     background-color: white !important;
@@ -38,4 +38,21 @@
     page-break-inside: avoid;
     break-inside: avoid;
   }
+  /* Isolate print-root container when printing standee/card */
+  body * {
+    visibility: hidden;
+  }
+  #print-root, #print-root * {
+    visibility: visible;
+  }
+  #print-root {
+    position: absolute;
+    left: 50%;
+    top: 5%;
+    transform: translateX(-50%);
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border-color: #cbd5e1 !important;
+  }
 }
+

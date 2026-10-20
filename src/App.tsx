@@ -38,6 +38,7 @@ import {
   Palette,
   CreditCard,
   Building2,
+  ThumbsUp,
   X
 } from 'lucide-react';
 import QRCode from 'qrcode';
@@ -86,6 +87,7 @@ export default function App() {
     setting_url: string;
   } | null>(null);
   const [setupQrDataUrl, setSetupQrDataUrl] = useState<string>('');
+  const [setupSettingQrDataUrl, setSetupSettingQrDataUrl] = useState<string>('');
 
   // Batch generator modal (Admin)
   const [batchModalOpen, setBatchModalOpen] = useState(false);
@@ -98,8 +100,8 @@ export default function App() {
   const [qrModalDataUrl, setQrModalDataUrl] = useState<string>('');
 
   // ==========================================
-  // FITUR CETAK KARTU / STANDEE KHUSUS ADMIN (DI SAMPING TOMBOL HAPUS)
-  // Desain sesuai referensi Standee Google 4-Warna
+  // FITUR CETAK KARTU / STANDEE KHUSUS (SESUAI FOTO LAMPIRAN)
+  // Desain Standee Akrilik Meja Google Review: Wave Biru, Google G, 5 Bintang, Tap NFC & QR
   // ==========================================
   const [printCardModalOpen, setPrintCardModalOpen] = useState(false);
   const [selectedCardForPrint, setSelectedCardForPrint] = useState<Card | null>(null);
@@ -107,6 +109,12 @@ export default function App() {
   const [customStampText, setCustomStampText] = useState<string>('');
   const [customSubtitle, setCustomSubtitle] = useState<string>('Help with a review on Google');
   const [printFormat, setPrintFormat] = useState<'standee_acrylic' | 'card_cr80'>('standee_acrylic');
+  const [printDesignTheme, setPrintDesignTheme] = useState<'blue_wave' | 'google_quadrant'>('blue_wave');
+  const [printHeaderLine1, setPrintHeaderLine1] = useState<string>('MAKE OUR DAY,');
+  const [printHeaderLine2, setPrintHeaderLine2] = useState<string>('LEAVE US A REVIEW!');
+  const [printTapText, setPrintTapText] = useState<string>('Tap or Scan');
+  const [printSerialText, setPrintSerialText] = useState<string>('');
+  const [printShowBusinessName, setPrintShowBusinessName] = useState<boolean>(true);
   const [isDownloadingImage, setIsDownloadingImage] = useState(false);
 
   // Interactive review growth calculator (Landing page)
@@ -169,13 +177,21 @@ export default function App() {
         setSetupMapsInput(card.gmaps_url || '');
 
         const redirectUrl = `${window.location.origin}/r/${card.card_id}`;
+        const settingUrl = `${window.location.origin}/setup/${card.card_id}`;
         try {
           const qrUrl = await QRCode.toDataURL(redirectUrl, {
-            width: 320,
+            width: 380,
             margin: 2,
             color: { dark: '#000000', light: '#ffffff' },
           });
           setSetupQrDataUrl(qrUrl);
+
+          const settingQr = await QRCode.toDataURL(settingUrl, {
+            width: 380,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' },
+          });
+          setSetupSettingQrDataUrl(settingQr);
         } catch (qrErr) {
           console.error('Failed to generate preview QR code:', qrErr);
         }
@@ -193,8 +209,11 @@ export default function App() {
             setSetupBusinessName(match.business_name || '');
             setSetupMapsInput(match.gmaps_url || '');
             const redirectUrl = `${window.location.origin}/r/${match.card_id}`;
-            const qrUrl = await QRCode.toDataURL(redirectUrl, { width: 320, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+            const settingUrl = `${window.location.origin}/setup/${match.card_id}`;
+            const qrUrl = await QRCode.toDataURL(redirectUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
             setSetupQrDataUrl(qrUrl);
+            const settingQr = await QRCode.toDataURL(settingUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+            setSetupSettingQrDataUrl(settingQr);
             return;
           }
         } catch (err) {}
@@ -228,8 +247,11 @@ export default function App() {
           setSetupBusinessName(fallbackCard.business_name || '');
           setSetupMapsInput(fallbackCard.gmaps_url || '');
           const redirectUrl = `${window.location.origin}/r/${fallbackCard.card_id}`;
-          const qrUrl = await QRCode.toDataURL(redirectUrl, { width: 320, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+          const settingUrl = `${window.location.origin}/setup/${fallbackCard.card_id}`;
+          const qrUrl = await QRCode.toDataURL(redirectUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
           setSetupQrDataUrl(qrUrl);
+          const settingQr = await QRCode.toDataURL(settingUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+          setSetupSettingQrDataUrl(settingQr);
           return;
         }
       } catch (err) {}
@@ -266,11 +288,12 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
         const reviewUrl = data.review_url || data.card?.gmaps_url || `${window.location.origin}/r/${setupCardData.card_id}`;
+        const settingUrl = `${window.location.origin}/setup/${setupCardData.card_id}`;
         setSetupSuccessResult({
           card_id: setupCardData.card_id,
           business_name: setupBusinessName,
           review_url: reviewUrl,
-          setting_url: `${window.location.origin}/setup/${setupCardData.card_id}`,
+          setting_url: settingUrl,
         });
         if (data.card) {
           setSetupCardData(data.card);
@@ -282,8 +305,15 @@ export default function App() {
             color: { dark: '#000000', light: '#ffffff' },
           });
           setSetupQrDataUrl(qrUrl);
+
+          const settingQr = await QRCode.toDataURL(settingUrl, {
+            width: 380,
+            margin: 2,
+            color: { dark: '#000000', light: '#ffffff' },
+          });
+          setSetupSettingQrDataUrl(settingQr);
         } catch (qrErr) {
-          console.error('Error creating review QR code:', qrErr);
+          console.error('Error creating QR codes:', qrErr);
         }
       } else {
         setSetupError(data.error || 'Gagal menyimpan konfigurasi kartu.');
@@ -314,6 +344,7 @@ export default function App() {
         const reviewUrl = setupMapsInput.startsWith('http')
           ? setupMapsInput
           : `https://search.google.com/local/writereview?q=${encodeURIComponent(setupBusinessName)}&review=5`;
+        const settingUrl = `${window.location.origin}/setup/${setupCardData.card_id}`;
         const updatedCard: Card = {
           ...setupCardData,
           business_name: setupBusinessName,
@@ -329,10 +360,12 @@ export default function App() {
           card_id: setupCardData.card_id,
           business_name: setupBusinessName,
           review_url: reviewUrl,
-          setting_url: `${window.location.origin}/setup/${setupCardData.card_id}`,
+          setting_url: settingUrl,
         });
         const qrUrl = await QRCode.toDataURL(reviewUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
         setSetupQrDataUrl(qrUrl);
+        const settingQr = await QRCode.toDataURL(settingUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
+        setSetupSettingQrDataUrl(settingQr);
       } catch (fallbackErr) {
         setSetupError('Terjadi kesalahan jaringan saat menyimpan konfigurasi.');
       }
@@ -568,10 +601,18 @@ export default function App() {
 
   // =========================================================================
   // BUKA MODAL CETAK STANDEE KHUSUS KARTU INI (SAMPING TOMBOL HAPUS)
-  // Desain sesuai gambar akrilik Google 4-warna yang dilampirkan user
-  // =========================================================================
+  // Desain sesuai gambar akrilik Google yang dilampirkan user
+  // ==========================================
   const openCardPrintModal = async (card: Card) => {
     setSelectedCardForPrint(card);
+    setPrintSerialText(card.card_id);
+    setPrintHeaderLine1('MAKE OUR DAY,');
+    setPrintHeaderLine2('LEAVE US A REVIEW!');
+    setPrintTapText('Tap or Scan');
+    setPrintShowBusinessName(true);
+    setPrintDesignTheme('blue_wave');
+    setPrintFormat('standee_acrylic');
+
     const defaultStamp = card.business_name
       ? card.business_name.length > 20
         ? card.business_name.substring(0, 18).toUpperCase()
@@ -580,7 +621,7 @@ export default function App() {
     setCustomStampText(defaultStamp);
     setPrintCardModalOpen(true);
 
-    // Target URL: redirect URL kartu (akan mengarahkan ke Google Review bila sudah diatur)
+    // Target URL: redirect URL kartu (mengarahkan ke Google Review bila sudah diatur)
     const targetUrl = card.gmaps_url || `${window.location.origin}/r/${card.card_id}`;
     try {
       const qrData = await QRCode.toDataURL(targetUrl, {
@@ -604,232 +645,261 @@ export default function App() {
       if (!ctx) return;
 
       const isCard = printFormat === 'card_cr80';
-      const width = isCard ? 1012 : 1240;
-      const height = isCard ? 638 : 1754;
+      const width = isCard ? 1182 : 945;
+      const height = isCard ? 1182 : 1299;
 
       canvas.width = width;
       canvas.height = height;
 
       if (!isCard) {
-        // STANDALONE ACRYLIC STANDEE (A6/A5 Proportion)
-        const midX = width / 2;
-        const midY = height / 2;
-
-        // 1. Google 4-Quadrant Color Background
-        // Top-Left: Yellow (#FBBC05)
-        ctx.fillStyle = '#FBBC05';
-        ctx.fillRect(0, 0, midX, midY);
-
-        // Top-Right: Red (#EA4335)
-        ctx.fillStyle = '#EA4335';
-        ctx.fillRect(midX, 0, midX, midY);
-
-        // Bottom-Left: Green (#34A853)
-        ctx.fillStyle = '#34A853';
-        ctx.fillRect(0, midY, midX, midY);
-
-        // Bottom-Right: Blue (#4285F4)
-        ctx.fillStyle = '#4285F4';
-        ctx.fillRect(midX, midY, midX, midY);
-
-        // 2. Inner White Rounded Card
-        const inset = 60;
-        const cardW = width - (inset * 2);
-        const cardH = height - (inset * 2);
-        const radius = 64;
-
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(inset + radius, inset);
-        ctx.lineTo(inset + cardW - radius, inset);
-        ctx.quadraticCurveTo(inset + cardW, inset, inset + cardW, inset + radius);
-        ctx.lineTo(inset + cardW, inset + cardH - radius);
-        ctx.quadraticCurveTo(inset + cardW, inset + cardH, inset + cardW - radius, inset + cardH);
-        ctx.lineTo(inset + radius, inset + cardH);
-        ctx.quadraticCurveTo(inset, inset + cardH, inset, inset + cardH - radius);
-        ctx.lineTo(inset, inset + radius);
-        ctx.quadraticCurveTo(inset, inset, inset + radius, inset);
-        ctx.closePath();
-
+        // STANDALONE ACRYLIC STANDEE (SESUAI FOTO LAMPIRAN)
+        // 1. Background White Card
         ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.18)';
-        ctx.shadowBlur = 32;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 12;
-        ctx.fill();
-        ctx.restore();
+        ctx.fillRect(0, 0, width, height);
 
-        // 3. Draw Google G Logo on Top Left
-        const gSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="120" height="120">
-          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-        </svg>`;
-        const gImg = new Image();
-        gImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(gSvg);
-        await new Promise((res) => { gImg.onload = res; });
-        ctx.drawImage(gImg, inset + 60, inset + 50, 110, 110);
-
-        // 4. Circular Business Stamp on Top Right
-        const stampRadius = 55;
-        const stampCenterX = inset + cardW - 120;
-        const stampCenterY = inset + 105;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(stampCenterX, stampCenterY, stampRadius, 0, Math.PI * 2);
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#0f172a';
-        ctx.stroke();
-        ctx.fillStyle = '#0f172a';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.font = 'bold 18px "Plus Jakarta Sans", sans-serif';
-        const stampText = customStampText || selectedCardForPrint.business_name || 'WOODS BARBER';
-        const words = stampText.split(' ');
-        if (words.length > 2) {
-          ctx.fillText(words.slice(0, 2).join(' '), stampCenterX, stampCenterY - 12);
-          ctx.fillText(words.slice(2).join(' '), stampCenterX, stampCenterY + 12);
-        } else {
-          ctx.fillText(stampText, stampCenterX, stampCenterY);
-        }
-        ctx.restore();
-
-        // 5. Business Name in Center
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'alphabetic';
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 52px "Plus Jakarta Sans", sans-serif';
-        const bName = (selectedCardForPrint.business_name || 'WOODS BARBERSHOP ADISUCIPTO').toUpperCase();
-        ctx.fillText(bName, width / 2, inset + 260);
-
-        // 6. Headline & Subheadline
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Bantu kami dengan ulasan di Google', width / 2, inset + 325);
-
-        ctx.fillStyle = '#64748b';
-        ctx.font = '500 28px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText(customSubtitle || 'Help with a review on Google', width / 2, inset + 370);
-
-        // 7. 5 Gold Stars
-        ctx.fillStyle = '#FBBC05';
-        ctx.font = '52px sans-serif';
-        ctx.fillText('★★★★★', width / 2, inset + 450);
-
-        // 8. NFC Tap Icon (Left side)
-        const nfcCenterX = width / 2 - 240;
-        const nfcCenterY = inset + 680;
-
-        ctx.strokeStyle = '#1e293b';
-        ctx.lineWidth = 7;
-        ctx.lineCap = 'round';
-        // Arcs
-        for (let r = 50; r <= 110; r += 30) {
+        if (printDesignTheme === 'blue_wave') {
+          // ==========================================
+          // DESAIN SESUAI FOTO LAMPIRAN: BLUE WAVE HEADER
+          // ==========================================
+          const waveBaseY = 460;
+          
+          // Draw Top Blue Wave
+          ctx.save();
           ctx.beginPath();
-          ctx.arc(nfcCenterX, nfcCenterY - 30, r, Math.PI * 1.15, Math.PI * 1.85);
+          ctx.moveTo(0, 0);
+          ctx.lineTo(width, 0);
+          ctx.lineTo(width, waveBaseY - 20);
+          // Scallop curve arching up in center for Google G logo
+          ctx.bezierCurveTo(width * 0.72, waveBaseY + 60, width * 0.62, waveBaseY - 70, width * 0.5, waveBaseY - 70);
+          ctx.bezierCurveTo(width * 0.38, waveBaseY - 70, width * 0.28, waveBaseY + 60, 0, waveBaseY - 20);
+          ctx.closePath();
+          ctx.fillStyle = '#0866d6';
+          ctx.fill();
+          ctx.restore();
+
+          // Header text 1: "MAKE OUR DAY,"
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '800 52px "Plus Jakarta Sans", sans-serif';
+          ctx.fillText(printHeaderLine1 || 'MAKE OUR DAY,', width / 2, 190);
+
+          // Header text 2: "LEAVE US A REVIEW!"
+          ctx.font = '900 66px "Plus Jakarta Sans", sans-serif';
+          ctx.fillText(printHeaderLine2 || 'LEAVE US A REVIEW!', width / 2, 275);
+
+          // Business Name subtitle in header if enabled
+          if (printShowBusinessName && selectedCardForPrint.business_name) {
+            ctx.font = 'bold 30px "Plus Jakarta Sans", sans-serif';
+            ctx.fillStyle = '#dbeafe';
+            ctx.fillText(`• ${selectedCardForPrint.business_name.toUpperCase()} •`, width / 2, 340);
+          }
+
+          // Circular Disc for Google "G"
+          const discX = width / 2;
+          const discY = waveBaseY - 70;
+          const discRadius = 88;
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(discX, discY, discRadius, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(0, 0, 0, 0.2)';
+          ctx.shadowBlur = 24;
+          ctx.shadowOffsetY = 6;
+          ctx.fill();
+          ctx.restore();
+
+          // Draw Google "G" official SVG
+          const gSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="120" height="120">
+            <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+            <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+            <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+            <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+          </svg>`;
+          const gImg = new Image();
+          gImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(gSvg);
+          await new Promise((res) => { gImg.onload = res; });
+          ctx.drawImage(gImg, discX - 60, discY - 60, 120, 120);
+
+          // 5 Golden Stars directly under Google "G"
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#FBBC05';
+          ctx.font = '84px sans-serif';
+          ctx.fillText('★★★★★', width / 2, 600);
+
+          // Dual Action Area (NFC Hand vs QR Code)
+          const leftX = width * 0.28;
+          const rightX = width * 0.72;
+          const midY = 1050;
+
+          // Left: Hand holding phone with NFC waves SVG
+          const handSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="240" height="240" fill="none">
+            <g transform="translate(14, 8)">
+              <g transform="rotate(-10 32 45)">
+                <rect x="12" y="10" width="38" height="66" rx="6" stroke="#0f172a" stroke-width="3" fill="#ffffff" />
+                <line x1="20" y1="16" x2="42" y2="16" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" />
+                <line x1="26" y1="70" x2="36" y2="70" stroke="#0f172a" stroke-width="2.2" stroke-linecap="round" />
+                <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+                <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+                <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              </g>
+              <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              <path d="M 4 65 L 0 80" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+              <path d="M 26 84 L 20 95" stroke="#0f172a" stroke-width="3" stroke-linecap="round" />
+            </g>
+          </svg>`;
+          const handImg = new Image();
+          handImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(handSvg);
+          await new Promise((res) => { handImg.onload = res; });
+          ctx.drawImage(handImg, leftX - 120, midY - 140, 240, 240);
+
+          // "Tap or Scan" text
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 44px "Plus Jakarta Sans", sans-serif';
+          ctx.fillText(printTapText || 'Tap or Scan', leftX, midY + 160);
+
+          // Right: QR Code
+          const qrSize = 380;
+          if (cardPrintQrUrl) {
+            const qrImg = new Image();
+            qrImg.src = cardPrintQrUrl;
+            await new Promise((res) => { qrImg.onload = res; });
+            ctx.drawImage(qrImg, rightX - (qrSize / 2), midY - 170, qrSize, qrSize);
+          }
+
+          // Serial ID badge under QR
+          const serialText = printSerialText || selectedCardForPrint.card_id;
+          ctx.save();
+          ctx.font = 'bold 32px monospace';
+          const badgeMetrics = ctx.measureText(serialText);
+          const bW = badgeMetrics.width + 44;
+          const bH = 50;
+          const bY = midY + 235;
+
+          ctx.fillStyle = '#f1f5f9';
+          ctx.strokeStyle = '#cbd5e1';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.roundRect(rightX - (bW / 2), bY - (bH / 2), bW, bH, 12);
+          ctx.fill();
           ctx.stroke();
+
+          ctx.fillStyle = '#334155';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(serialText, rightX, bY);
+          ctx.restore();
+
+          // Subtle Bottom Card Border
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.roundRect(4, 4, width - 8, height - 8, 48);
+          ctx.stroke();
+
+          // Footer Text
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
+          ctx.fillText('Built-in NFC & QR Code • Tap/Scan to Review', width / 2, height - 80);
+
+        } else {
+          // Google 4-Quadrant Mode (Alternative)
+          const midX = width / 2;
+          const midY = height / 2;
+          ctx.fillStyle = '#FBBC05'; ctx.fillRect(0, 0, midX, midY);
+          ctx.fillStyle = '#EA4335'; ctx.fillRect(midX, 0, midX, midY);
+          ctx.fillStyle = '#34A853'; ctx.fillRect(0, midY, midX, midY);
+          ctx.fillStyle = '#4285F4'; ctx.fillRect(midX, midY, midX, midY);
+
+          const inset = 60;
+          const cardW = width - (inset * 2);
+          const cardH = height - (inset * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.roundRect(inset, inset, cardW, cardH, 48);
+          ctx.fill();
+
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold 50px "Plus Jakarta Sans", sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(printHeaderLine1 || 'MAKE OUR DAY,', width / 2, inset + 180);
+          ctx.font = 'bold 58px "Plus Jakarta Sans", sans-serif';
+          ctx.fillText(printHeaderLine2 || 'LEAVE US A REVIEW!', width / 2, inset + 250);
+
+          ctx.fillStyle = '#FBBC05';
+          ctx.font = '72px sans-serif';
+          ctx.fillText('★★★★★', width / 2, inset + 340);
         }
-        // Card shape
-        ctx.strokeRect(nfcCenterX - 45, nfcCenterY - 20, 90, 60);
-
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 34px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Tap NFC', nfcCenterX, inset + 860);
-
-        // 9. Center Divider with "Atau"
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(width / 2, inset + 560);
-        ctx.lineTo(width / 2, inset + 820);
-        ctx.stroke();
-
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(width / 2 - 40, inset + 670, 80, 40);
-        ctx.fillStyle = '#64748b';
-        ctx.font = 'bold 26px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Atau', width / 2, inset + 700);
-
-        // 10. QR Code (Right side)
-        const qrSize = 340;
-        const qrX = width / 2 + 70;
-        const qrY = inset + 510;
-
-        if (cardPrintQrUrl) {
-          const qrImg = new Image();
-          qrImg.src = cardPrintQrUrl;
-          await new Promise((res) => { qrImg.onload = res; });
-          ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
-        }
-
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 34px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Scan QR', qrX + (qrSize / 2), inset + 910);
-
-        // 11. Thank You Bottom Text
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Terima kasih atas dukungan anda :)', width / 2, inset + 1040);
-
-        ctx.fillStyle = '#64748b';
-        ctx.font = '500 28px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Thank you for your support :)', width / 2, inset + 1085);
       } else {
         // CR80 POCKET CARD FORMAT (Landscape)
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, width, height);
 
-        // 4 color accent bar at top
-        const barH = 16;
-        ctx.fillStyle = '#FBBC05'; ctx.fillRect(0, 0, width * 0.25, barH);
-        ctx.fillStyle = '#EA4335'; ctx.fillRect(width * 0.25, 0, width * 0.25, barH);
-        ctx.fillStyle = '#34A853'; ctx.fillRect(width * 0.5, 0, width * 0.25, barH);
-        ctx.fillStyle = '#4285F4'; ctx.fillRect(width * 0.75, 0, width * 0.25, barH);
+        // Top blue curved banner
+        ctx.fillStyle = '#0866d6';
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(width, 0);
+        ctx.lineTo(width, 140);
+        ctx.bezierCurveTo(width * 0.7, 180, width * 0.55, 120, width * 0.45, 120);
+        ctx.bezierCurveTo(width * 0.35, 120, width * 0.2, 170, 0, 140);
+        ctx.closePath();
+        ctx.fill();
 
-        // Card Border
-        ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth = 4;
-        ctx.strokeRect(10, 10, width - 20, height - 20);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 28px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillText(printHeaderLine1 || 'MAKE OUR DAY,', 50, 60);
+        ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText(printHeaderLine2 || 'LEAVE US A REVIEW!', 50, 105);
+
+        // 5 Gold Stars
+        ctx.fillStyle = '#FBBC05';
+        ctx.font = '42px sans-serif';
+        ctx.fillText('★★★★★', 50, 205);
 
         // Business Name
-        ctx.textAlign = 'left';
         ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 44px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText((selectedCardForPrint.business_name || 'WOODS BARBERSHOP').toUpperCase(), 60, 100);
+        ctx.font = 'bold 36px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText((selectedCardForPrint.business_name || 'BISNIS ANDA').toUpperCase(), 50, 265);
 
-        ctx.fillStyle = '#1e293b';
-        ctx.font = 'bold 26px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Bantu kami dengan ulasan di Google', 60, 150);
-
-        ctx.fillStyle = '#FBBC05';
-        ctx.font = '36px sans-serif';
-        ctx.fillText('★★★★★', 60, 200);
-
-        ctx.fillStyle = '#0f172a';
-        ctx.font = 'bold 26px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('⚡ Tap NFC Smartphone Anda', 60, 290);
+        // NFC Tap Indicator
+        ctx.fillStyle = '#0866d6';
+        ctx.font = 'bold 28px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText(`⚡ ${printTapText || 'Tap or Scan'}`, 50, 340);
 
         ctx.fillStyle = '#64748b';
-        ctx.font = '22px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('ID Kartu: ' + selectedCardForPrint.card_id, 60, 340);
+        ctx.font = 'bold 22px monospace';
+        ctx.fillText('ID: ' + (printSerialText || selectedCardForPrint.card_id), 50, 390);
 
         // QR Code right side
         if (cardPrintQrUrl) {
           const qrImg = new Image();
           qrImg.src = cardPrintQrUrl;
           await new Promise((res) => { qrImg.onload = res; });
-          ctx.drawImage(qrImg, width - 360, 80, 280, 280);
+          ctx.drawImage(qrImg, width - 360, 100, 300, 300);
+
           ctx.textAlign = 'center';
           ctx.fillStyle = '#0f172a';
-          ctx.font = 'bold 24px "Plus Jakarta Sans", sans-serif';
-          ctx.fillText('Scan QR Kamera', width - 220, 390);
+          ctx.font = 'bold 22px "Plus Jakarta Sans", sans-serif';
+          ctx.fillText('Scan QR Kamera', width - 210, 435);
         }
 
+        // Card Border
+        ctx.strokeStyle = '#cbd5e1';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.roundRect(8, 8, width - 16, height - 16, 28);
+        ctx.stroke();
+
         ctx.textAlign = 'left';
-        ctx.fillStyle = '#64748b';
-        ctx.font = '500 22px "Plus Jakarta Sans", sans-serif';
-        ctx.fillText('Terima kasih atas dukungan anda :)', 60, height - 50);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '500 20px "Plus Jakarta Sans", sans-serif';
+        ctx.fillText('Direct Google Review • Built-in NFC & QR Code', 50, height - 40);
       }
 
       // Download PNG file
@@ -1001,6 +1071,161 @@ export default function App() {
               </div>
             </div>
 
+            {/* "Why Businesses Love It" - Standee Akrilik Meja Showcase (Persis Foto Lampiran) */}
+            <div className="bg-[#0b0e17] border border-slate-800/80 rounded-3xl p-6 sm:p-10 max-w-6xl mx-auto shadow-2xl relative overflow-hidden">
+              <div className="text-center space-y-2 mb-10 max-w-2xl mx-auto">
+                <span className="text-xs font-bold text-blue-400 uppercase tracking-widest px-3 py-1 bg-blue-500/10 rounded-full border border-blue-500/20">
+                  Desain Display Akrilik Meja Kasir
+                </span>
+                <h2 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+                  Why Businesses Love It
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-400">
+                  Simple. Smart. Results that speak for themselves.
+                </p>
+              </div>
+
+              {/* Showcase Grid: Left 2 Features, Center Standee Preview, Right 2 Features */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+                
+                {/* Left 2 Callouts */}
+                <div className="lg:col-span-3 space-y-6 order-2 lg:order-1">
+                  <div className="p-4 rounded-2xl bg-[#121624] border border-slate-800 space-y-2 hover:border-blue-500/30 transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                      <ThumbsUp className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-bold text-white text-sm">Ready to use</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      No setup required for customers. Place on cashier table and get reviews instantly.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-[#121624] border border-slate-800 space-y-2 hover:border-amber-500/30 transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                      <Smartphone className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-bold text-white text-sm">Built-in NFC technology</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Tap with any NFC-enabled iPhone or Android phone to leave a review in seconds.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Center Standee Preview (Persis Foto Lampiran) */}
+                <div className="lg:col-span-6 flex flex-col items-center justify-center order-1 lg:order-2">
+                  <div className="w-full max-w-[320px] sm:max-w-[350px] bg-white rounded-3xl overflow-hidden shadow-2xl border border-slate-200 select-none transform transition-transform hover:scale-[1.02]">
+                    
+                    {/* Blue Wave Header */}
+                    <div className="relative bg-[#0866d6] pt-6 pb-9 px-4 text-center">
+                      <div className="relative z-10 space-y-0.5">
+                        <div className="font-extrabold text-white text-base tracking-wider uppercase">
+                          MAKE OUR DAY,
+                        </div>
+                        <div className="font-black text-white text-lg tracking-wider uppercase">
+                          LEAVE US A REVIEW!
+                        </div>
+                      </div>
+                      <div className="absolute -bottom-1 left-0 right-0 w-full overflow-hidden leading-none pointer-events-none">
+                        <svg viewBox="0 0 400 48" preserveAspectRatio="none" className="w-full h-8 text-white fill-current">
+                          <path d="M 0,0 C 110,40 150,8 200,8 C 250,8 290,40 400,0 L 400,48 L 0,48 Z" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Google G Emblem */}
+                    <div className="relative -mt-6 z-20 flex justify-center">
+                      <div className="w-14 h-14 rounded-full bg-white shadow-lg p-2 flex items-center justify-center border-2 border-white ring-1 ring-black/10">
+                        <svg viewBox="0 0 24 24" className="w-9 h-9">
+                          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* 5 Stars */}
+                    <div className="flex items-center justify-center gap-1 text-[#FBBC05] text-2xl my-2">
+                      <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+                    </div>
+
+                    {/* Hand NFC + QR Code */}
+                    <div className="grid grid-cols-2 gap-2 items-center px-4 py-2 my-1">
+                      <div className="flex flex-col items-center text-center">
+                        <div className="w-20 h-20 flex items-center justify-center">
+                          <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900" fill="none">
+                            <g transform="translate(14, 8)">
+                              <g transform="rotate(-10 32 45)">
+                                <rect x="12" y="10" width="38" height="66" rx="6" stroke="#0f172a" strokeWidth="2.8" fill="#ffffff" />
+                                <line x1="20" y1="16" x2="42" y2="16" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                                <line x1="26" y1="70" x2="36" y2="70" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                                <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              </g>
+                              <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              <path d="M 4 65 L 0 80" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                              <path d="M 26 84 L 20 95" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                            </g>
+                          </svg>
+                        </div>
+                        <span className="font-extrabold text-xs text-slate-900 mt-1">Tap or Scan</span>
+                      </div>
+
+                      <div className="flex flex-col items-center text-center">
+                        <div className="w-22 h-22 bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex items-center justify-center">
+                          <div className="w-full h-full bg-slate-900 rounded flex items-center justify-center p-1">
+                            <QrCode className="w-16 h-16 text-white" />
+                          </div>
+                        </div>
+                        <span className="font-mono font-bold text-[10px] text-slate-700 mt-1 px-2 py-0.5 bg-slate-100 rounded border border-slate-200">
+                          CT-00005
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="py-2 border-t border-slate-100 text-center text-[9px] text-slate-400 font-medium">
+                      Built-in NFC & QR Code • Tap/Scan to Review
+                    </div>
+                  </div>
+
+                  {/* Acrylic Foot Base */}
+                  <div className="w-[78%] h-3.5 bg-gradient-to-b from-slate-200/90 to-slate-300/80 rounded-b-xl shadow-md border-t border-slate-300 relative -mt-0.5 mx-auto">
+                    <div className="absolute inset-x-8 top-1 h-[2px] bg-white/70 rounded-full" />
+                  </div>
+
+
+
+                {/* Right 2 Callouts */}
+                <div className="lg:col-span-3 space-y-6 order-3">
+                  <div className="p-4 rounded-2xl bg-[#121624] border border-slate-800 space-y-2 hover:border-emerald-500/30 transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-bold text-white text-sm">Durable Acrylic material</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Sturdy, long-lasting acrylic stand design for indoor & outdoor tabletop use.
+                    </p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-[#121624] border border-slate-800 space-y-2 hover:border-cyan-500/30 transition-all">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center">
+                      <QrCode className="w-5 h-5" />
+                    </div>
+                    <h4 className="font-bold text-white text-sm">Unique QR code</h4>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Scan camera to open your Google review page directly in seconds.
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
             {/* Interactive Calculator Section */}
             <div className="max-w-4xl mx-auto bg-[#0d101a] border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
@@ -1112,9 +1337,10 @@ export default function App() {
                 </div>
               </div>
             </div>
-
           </div>
         )}
+
+
 
         {/* ========================================================================= */}
         {/* VIEW 2: CLIENT / CUSTOMER CARD SETUP (Accessed via Secret Link)           */}
@@ -1138,61 +1364,223 @@ export default function App() {
                 <p className="text-xs text-slate-400">Memeriksa nomor kartu...</p>
               </div>
             ) : setupSuccessResult ? (
-              <div className="bg-[#0e121e] border border-emerald-500/30 rounded-2xl p-6 sm:p-8 space-y-6 shadow-2xl">
+              <div className="bg-[#0e121e] border border-emerald-500/30 rounded-3xl p-4 sm:p-7 space-y-6 shadow-2xl">
+                {/* Header with success badge */}
                 <div className="text-center space-y-2">
-                  <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto">
+                  <div className="w-12 h-12 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
                     <CheckCircle2 className="w-7 h-7" />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Kartu Berhasil Diaktivasi!</h3>
-                  <p className="text-xs text-slate-300">
+                  <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold">
+                    Konfigurasi Berhasil Disimpan & Aktif
+                  </span>
+                  <h3 className="text-xl sm:text-2xl font-black text-white">Kartu Siap Digunakan!</h3>
+                  <p className="text-xs sm:text-sm text-slate-300 max-w-lg mx-auto leading-relaxed">
                     Kartu <span className="font-mono font-bold text-amber-400">{setupSuccessResult.card_id}</span> kini resmi terhubung ke <strong className="text-white">{setupSuccessResult.business_name}</strong>.
                   </p>
                 </div>
 
-                {setupQrDataUrl && (
-                  <div className="p-4 bg-white rounded-2xl text-center max-w-xs mx-auto shadow-xl">
-                    <img src={setupQrDataUrl} alt="QR Code Review" className="w-48 h-48 mx-auto" />
-                    <p className="text-[10px] text-slate-600 font-semibold mt-2">Scan untuk tes ulasan Google</p>
+                {/* Notice: Setting Web & QR Code to Change Later */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-cyan-500/10 to-amber-500/10 border border-amber-500/30 text-center space-y-1">
+                  <div className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-300">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <span>Mau Ganti Link / Nama Toko di Masa Depan?</span>
                   </div>
-                )}
-
-                <div className="space-y-3 text-xs">
-                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 flex items-center justify-between">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">URL Redirect Kartu:</span>
-                      <span className="font-mono text-white text-xs">{setupSuccessResult.review_url}</span>
-                    </div>
-                    <button
-                      onClick={() => copyToClipboard(setupSuccessResult.review_url, 'redir')}
-                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg"
-                    >
-                      {copiedKey === 'redir' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
+                  <p className="text-[11px] text-slate-300 max-w-xl mx-auto leading-relaxed">
+                    Kami sediakan <strong>Link Web Setting & QR Code Khusus Pengaturan</strong> di bawah. Simpan link ini di catatan HP Anda agar Anda dapat mengganti target ulasan Google Maps kapan saja secara mandiri.
+                  </p>
                 </div>
 
-                <div className="pt-2 flex justify-center">
+                {/* 2 Responsive Cards Grid (Review vs Setting) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
+                  
+                  {/* CARD 1: QR Code & Link Ulasan Google (Untuk Pelanggan & Display Meja) */}
+                  <div className="bg-[#121624] border border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4 flex flex-col justify-between">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 text-[11px] font-bold border border-amber-500/20">
+                          <Star className="w-3.5 h-3.5 fill-amber-400" />
+                          Ulasan Pelanggan
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">Untuk Display Meja</span>
+                      </div>
+                      <h4 className="font-bold text-white text-sm">QR Code Ulasan Google</h4>
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Dipasang di standee kasir atau di-scan pelanggan untuk langsung membuka dialog review Google bintang 5.
+                      </p>
+                    </div>
+
+                    {setupQrDataUrl ? (
+                      <div className="p-3 bg-white rounded-2xl text-center max-w-[210px] mx-auto shadow-xl">
+                        <img src={setupQrDataUrl} alt="QR Code Review" className="w-40 h-40 sm:w-44 sm:h-44 mx-auto object-contain" />
+                        <p className="text-[10px] text-slate-700 font-bold mt-1.5">Scan untuk Beri Ulasan</p>
+                      </div>
+                    ) : (
+                      <div className="h-44 flex items-center justify-center text-slate-500 text-xs">
+                        Memuat QR Ulasan...
+                      </div>
+                    )}
+
+                    <div className="space-y-2.5">
+                      <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800">
+                        <span className="text-slate-400 block text-[10px] font-semibold mb-0.5">Link Ulasan / Tap NFC:</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-white text-xs truncate select-all">{setupSuccessResult.review_url}</span>
+                          <button
+                            onClick={() => copyToClipboard(setupSuccessResult.review_url, 'redir')}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg shrink-0 cursor-pointer transition-colors"
+                            title="Salin Link Ulasan"
+                          >
+                            {copiedKey === 'redir' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {setupQrDataUrl && (
+                          <a
+                            href={setupQrDataUrl}
+                            download={`QR_Ulasan_${setupSuccessResult.card_id}.png`}
+                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5 text-amber-400" />
+                            <span>Download QR</span>
+                          </a>
+                        )}
+                        <a
+                          href={setupSuccessResult.review_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-semibold text-xs rounded-xl border border-amber-500/30 flex items-center justify-center gap-1.5 transition-colors"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                          <span>Tes Buka</span>
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CARD 2: QR Code & Link Web Setting (KHUSUS PEMILIK TOKO - JIKA MAU GANTI NANTI) */}
+                  <div className="bg-[#121624] border border-cyan-500/30 rounded-2xl p-4 sm:p-5 space-y-4 flex flex-col justify-between relative overflow-hidden">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-500/10 text-cyan-300 text-[11px] font-bold border border-cyan-500/25">
+                          <Settings className="w-3.5 h-3.5 text-cyan-400" />
+                          Khusus Pemilik Toko
+                        </span>
+                        <span className="text-[10px] text-cyan-400 font-semibold">Simpan Ini</span>
+                      </div>
+                      <h4 className="font-bold text-white text-sm">QR Code & Link Web Setting</h4>
+                      <p className="text-[11px] text-cyan-200/80 leading-relaxed">
+                        Scan QR ini atau simpan link web setting ini jika sewaktu-waktu Anda ingin <strong>mengganti alamat Google Maps atau nama bisnis</strong>.
+                      </p>
+                    </div>
+
+                    {setupSettingQrDataUrl ? (
+                      <div className="p-3 bg-white rounded-2xl text-center max-w-[210px] mx-auto shadow-xl ring-2 ring-cyan-500/20">
+                        <img src={setupSettingQrDataUrl} alt="QR Code Setting" className="w-40 h-40 sm:w-44 sm:h-44 mx-auto object-contain" />
+                        <p className="text-[10px] text-cyan-900 font-bold mt-1.5">Scan Kamera untuk Setting</p>
+                      </div>
+                    ) : (
+                      <div className="h-44 flex items-center justify-center text-slate-500 text-xs">
+                        Memuat QR Setting...
+                      </div>
+                    )}
+
+                    <div className="space-y-2.5">
+                      <div className="p-2.5 bg-slate-900/90 rounded-xl border border-cyan-500/30">
+                        <span className="text-cyan-300 block text-[10px] font-semibold mb-0.5">Link Web Setting (Untuk Mengganti):</span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-cyan-100 text-xs truncate select-all">{setupSuccessResult.setting_url}</span>
+                          <button
+                            onClick={() => copyToClipboard(setupSuccessResult.setting_url, 'setting')}
+                            className="p-1.5 bg-cyan-950 hover:bg-cyan-900 text-cyan-200 rounded-lg shrink-0 cursor-pointer transition-colors border border-cyan-700/40"
+                            title="Salin Link Web Setting"
+                          >
+                            {copiedKey === 'setting' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {setupSettingQrDataUrl && (
+                          <a
+                            href={setupSettingQrDataUrl}
+                            download={`QR_Setting_${setupSuccessResult.card_id}.png`}
+                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>Download QR</span>
+                          </a>
+                        )}
+                        <button
+                          onClick={() => {
+                            setSetupSuccessResult(null);
+                          }}
+                          className="px-3 py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-semibold text-xs rounded-xl border border-cyan-500/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                        >
+                          <Settings className="w-3.5 h-3.5" />
+                          <span>Ubah Lagi</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+
+                {/* Bottom Helper Bar */}
+                <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                    <button
+                      onClick={() => {
+                        const summary = `📱 TapUlasan Kartu: ${setupSuccessResult.card_id}\n🏬 Bisnis: ${setupSuccessResult.business_name}\n⭐ Link Review Pelanggan: ${setupSuccessResult.review_url}\n⚙️ Link Web Setting (Untuk Mengganti): ${setupSuccessResult.setting_url}`;
+                        copyToClipboard(summary, 'all_info');
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    >
+                      {copiedKey === 'all_info' ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-amber-400" />}
+                      <span>{copiedKey === 'all_info' ? 'Semua Info Berhasil Disalin!' : 'Salin Semua Info'}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        openCardPrintModal({
+                          card_id: setupSuccessResult.card_id,
+                          business_name: setupSuccessResult.business_name,
+                          gmaps_url: setupSuccessResult.review_url,
+                          is_active: true,
+                          scan_count: 0,
+                          created_at: new Date().toISOString(),
+                          updated_at: new Date().toISOString()
+                        });
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition-all shadow-md cursor-pointer active:scale-95"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>Cetak Standee Akrilik Meja</span>
+                    </button>
+                  </div>
+
                   <button
                     onClick={() => {
                       setSetupSuccessResult(null);
                       setCurrentView('landing');
                     }}
-                    className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl cursor-pointer"
+                    className="w-full sm:w-auto px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl cursor-pointer shadow-md transition-all"
                   >
-                    Kembali ke Beranda
+                    Selesai & Ke Beranda
                   </button>
                 </div>
               </div>
             ) : setupCardData ? (
-              <form onSubmit={handleSaveCustomerSetup} className="bg-[#0e121e] border border-slate-800 rounded-2xl p-6 sm:p-8 space-y-5 shadow-2xl">
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div className="font-mono text-xs text-amber-400 font-bold">
-                    ID: {setupCardData.card_id}
+              <form onSubmit={handleSaveCustomerSetup} className="bg-[#0e121e] border border-slate-800 rounded-3xl p-5 sm:p-8 space-y-5 shadow-2xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-2">
+                  <div className="font-mono text-sm text-amber-400 font-bold">
+                    ID KARTU: {setupCardData.card_id}
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
-                    setupCardData.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                  <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold w-fit ${
+                    setupCardData.is_active ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'
                   }`}>
-                    {setupCardData.is_active ? 'Sudah Aktif (Dapat Diubah)' : 'Belum Diatur'}
+                    {setupCardData.is_active ? 'Sudah Aktif (Dapat Diperbarui Kapan Saja)' : 'Belum Diatur'}
                   </span>
                 </div>
 
@@ -1213,7 +1601,7 @@ export default function App() {
                     placeholder="Contoh: Woods Barbershop Adisucipto"
                     value={setupBusinessName}
                     onChange={(e) => setSetupBusinessName(e.target.value)}
-                    className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm sm:text-xs text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
@@ -1227,18 +1615,36 @@ export default function App() {
                     placeholder="Contoh: https://maps.app.goo.gl/... atau https://search.google.com/local/writereview?placeid=..."
                     value={setupMapsInput}
                     onChange={(e) => setSetupMapsInput(e.target.value)}
-                    className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono text-[11px]"
+                    className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm sm:text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
                   />
                   <p className="text-[10px] text-slate-400">
-                    Buka Google Maps, klik Bagikan (Share) profil bisnis Anda, lalu salin link dan tempelkan di atas.
+                    Buka Google Maps di HP / browser Anda, klik <strong>Bagikan (Share)</strong> profil bisnis, lalu salin link dan tempelkan di atas.
                   </p>
                 </div>
 
-                <div className="pt-3">
+                {/* Permanent setting URL badge */}
+                <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between gap-2">
+                  <div className="truncate">
+                    <span className="text-slate-500 block text-[9px] uppercase font-bold">Link Web Pengaturan Kartu Ini:</span>
+                    <span className="font-mono text-cyan-300 text-[10px] truncate block">
+                      {window.location.origin}/setup/{setupCardData.card_id}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(`${window.location.origin}/setup/${setupCardData.card_id}`, 'form_setting_url')}
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg shrink-0 cursor-pointer"
+                    title="Salin Link Web Setting"
+                  >
+                    {copiedKey === 'form_setting_url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+
+                <div className="pt-2">
                   <button
                     type="submit"
                     disabled={savingSetup}
-                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
                   >
                     {savingSetup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     Simpan & Aktifkan Kartu
@@ -1445,8 +1851,11 @@ export default function App() {
             </div>
 
             {/* Admin Cards Table */}
-            <div className="bg-[#0e121e] border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto">
+            {/* Admin Cards Responsive List & Table */}
+            <div className="bg-[#0e121e] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+              
+              {/* DESKTOP TABLE VIEW (hidden on mobile, visible md and up) */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-[#121624] text-slate-400 uppercase tracking-wider border-b border-slate-800">
                     <tr>
@@ -1519,6 +1928,15 @@ export default function App() {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* Setting Link button */}
+                              <button
+                                onClick={() => copyToClipboard(`${window.location.origin}/setup/${card.card_id}`, `set_${card.card_id}`)}
+                                title="Salin Link Web Setting"
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-cyan-400 transition-colors"
+                              >
+                                {copiedKey === `set_${card.card_id}` ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Settings className="w-3.5 h-3.5" />}
+                              </button>
+
                               {/* QR View button */}
                               <button
                                 onClick={() => openCardQrModal(card)}
@@ -1567,11 +1985,115 @@ export default function App() {
                   </tbody>
                 </table>
               </div>
+
+              {/* MOBILE CARDS VIEW (visible on phone screens, hidden md and up) */}
+              <div className="block md:hidden divide-y divide-slate-800">
+                {filteredAdminCards.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-xs">
+                    {adminCards.length === 0 ? (
+                      <div className="space-y-3">
+                        <p>Database kartu masih kosong.</p>
+                        <button
+                          onClick={() => setBatchModalOpen(true)}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl"
+                        >
+                          Buat Batch Kartu Pertama
+                        </button>
+                      </div>
+                    ) : (
+                      'Tidak ada kartu yang cocok dengan filter.'
+                    )}
+                  </div>
+                ) : (
+                  filteredAdminCards.map((card) => (
+                    <div key={card.card_id} className="p-4 space-y-3">
+                      {/* Top Row: ID, status, scan count */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-amber-400 text-sm">{card.card_id}</span>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                            card.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {card.is_active ? 'Aktif' : 'Menunggu Setup'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono bg-slate-900 px-2 py-0.5 rounded-lg border border-slate-800">
+                          {card.scan_count} scan
+                        </div>
+                      </div>
+
+                      {/* Middle: Business name and links */}
+                      <div>
+                        <div className="font-bold text-white text-xs">
+                          {card.business_name || <span className="text-slate-500 italic font-normal">Belum diaktivasi</span>}
+                        </div>
+                        {card.gmaps_url && (
+                          <a
+                            href={card.gmaps_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[10px] text-slate-400 hover:text-amber-400 truncate block mt-0.5"
+                          >
+                            {card.gmaps_url}
+                          </a>
+                        )}
+                        <div className="mt-1.5 flex items-center justify-between text-[10px] text-cyan-400/90 bg-cyan-950/30 px-2 py-1 rounded-lg border border-cyan-800/20">
+                          <span className="truncate font-mono">Link Setting: /setup/{card.card_id}</span>
+                          <button
+                            onClick={() => copyToClipboard(`${window.location.origin}/setup/${card.card_id}`, `m_set_${card.card_id}`)}
+                            className="text-cyan-300 hover:text-white shrink-0 ml-2 font-bold cursor-pointer"
+                          >
+                            {copiedKey === `m_set_${card.card_id}` ? 'Disalin!' : 'Salin'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Action buttons: Print beside Delete */}
+                      <div className="pt-1 flex items-center justify-end gap-1.5 border-t border-slate-800/60">
+                        <button
+                          onClick={() => openCardQrModal(card)}
+                          title="Lihat QR"
+                          className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300"
+                        >
+                          <QrCode className="w-4 h-4" />
+                        </button>
+                        {card.is_active && (
+                          <button
+                            onClick={() => handleResetCard(card.card_id)}
+                            title="Reset Kartu"
+                            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300"
+                          >
+                            <RotateCcw className="w-4 h-4" />
+                          </button>
+                        )}
+                        {/* TOMBOL CETAK DI SAMPING TOMBOL HAPUS */}
+                        <button
+                          onClick={() => openCardPrintModal(card)}
+                          className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-amber-500/30 cursor-pointer active:scale-95 transition-all shadow-sm"
+                        >
+                          <Printer className="w-4 h-4 text-amber-400" />
+                          <span>Cetak Desain</span>
+                        </button>
+                        {/* TOMBOL HAPUS */}
+                        <button
+                          onClick={() => handleDeleteCard(card.card_id)}
+                          className="p-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400"
+                          title="Hapus Kartu"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
             </div>
           </div>
         )}
 
       </main>
+
 
       {/* ========================================================================= */}
       {/* CLEAN FOOTER (NO PRINT MENU)                                             */}
@@ -1704,13 +2226,13 @@ export default function App() {
           <div className="bg-[#0d101a] border border-slate-800 rounded-3xl max-w-4xl w-full p-5 sm:p-7 shadow-2xl relative space-y-6 my-auto">
             
             {/* Modal Header */}
-            <div className="no-print flex items-center justify-between pb-4 border-b border-slate-800">
+            <div className="no-print flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-3">
               <div>
                 <div className="flex items-center gap-2 text-xs font-semibold text-amber-400">
                   <Printer className="w-4 h-4" />
                   <span>Cetak Standee Display Google Review</span>
                 </div>
-                <h3 className="text-xl font-bold text-white tracking-tight mt-0.5">
+                <h3 className="text-lg sm:text-xl font-bold text-white tracking-tight mt-0.5">
                   Format Display Akrilik Meja & Kartu Kasir
                 </h3>
                 <p className="text-xs text-slate-400">
@@ -1719,10 +2241,10 @@ export default function App() {
               </div>
 
               {/* Action Buttons & Close */}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all"
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Cetak Sekarang</span>
@@ -1751,11 +2273,79 @@ export default function App() {
               {/* Left Column: Quick Customizer (No-Print) */}
               <div className="no-print lg:col-span-5 space-y-4 text-xs">
                 <div className="bg-[#121624] border border-slate-800 p-4 rounded-2xl space-y-3.5">
-                  <div className="font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Pengaturan Tampilan Cetak</span>
+                  <div className="font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Pengaturan Tampilan Standee</span>
+                    </div>
+                    <span className="text-[10px] text-amber-400 font-semibold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20">
+                      Sesuai Foto Lampiran
+                    </span>
                   </div>
 
+                  {/* 1-Click Quick Presets */}
+                  <div>
+                    <label className="block text-slate-300 font-semibold mb-1.5">
+                      Pilihan Cepat Teks Standee:
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrintHeaderLine1('MAKE OUR DAY,');
+                          setPrintHeaderLine2('LEAVE US A REVIEW!');
+                          setPrintTapText('Tap or Scan');
+                          setPrintDesignTheme('blue_wave');
+                        }}
+                        className={`p-2 rounded-xl border text-center transition-all ${
+                          printHeaderLine1 === 'MAKE OUR DAY,' && printHeaderLine2 === 'LEAVE US A REVIEW!'
+                            ? 'bg-blue-600/20 border-blue-500 text-blue-300 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-bold text-[11px]">Foto Asli</div>
+                        <div className="text-[9px] text-slate-400">English</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrintHeaderLine1('BANTU KAMI,');
+                          setPrintHeaderLine2('BERIKAN KAMI ULASAN!');
+                          setPrintTapText('Tap atau Scan');
+                          setPrintDesignTheme('blue_wave');
+                        }}
+                        className={`p-2 rounded-xl border text-center transition-all ${
+                          printHeaderLine1 === 'BANTU KAMI,' && printHeaderLine2 === 'BERIKAN KAMI ULASAN!'
+                            ? 'bg-blue-600/20 border-blue-500 text-blue-300 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-bold text-[11px]">Indonesia</div>
+                        <div className="text-[9px] text-slate-400">Bahasa ID</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPrintHeaderLine1('ULASAN ANDA BERHARGA,');
+                          setPrintHeaderLine2('BERIKAN BINTANG 5!');
+                          setPrintTapText('Tap / Scan');
+                          setPrintDesignTheme('blue_wave');
+                        }}
+                        className={`p-2 rounded-xl border text-center transition-all ${
+                          printHeaderLine1 === 'ULASAN ANDA BERHARGA,'
+                            ? 'bg-blue-600/20 border-blue-500 text-blue-300 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-bold text-[11px]">Bintang 5</div>
+                        <div className="text-[9px] text-slate-400">Google Star</div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Format Selector: Standee vs Card */}
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
                       Pilihan Model Display:
@@ -1766,64 +2356,146 @@ export default function App() {
                         onClick={() => setPrintFormat('standee_acrylic')}
                         className={`p-2.5 rounded-xl border text-left transition-all ${
                           printFormat === 'standee_acrylic'
-                            ? 'bg-amber-500/10 border-amber-500 text-white font-bold'
+                            ? 'bg-amber-500/15 border-amber-500 text-white font-bold ring-1 ring-amber-500/30'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                         }`}
                       >
-                        <div className="font-semibold text-xs">Standee Meja Akrilik</div>
-                        <div className="text-[10px] text-slate-500">Sesuai Gambar Lampiran</div>
+                        <div className="font-semibold text-xs flex items-center gap-1.5">
+                          <Sparkles className="w-3 h-3 text-amber-400" />
+                          <span>Standee Akrilik Meja</span>
+                        </div>
+                        <div className="text-[10px] text-amber-400/90 font-medium mt-0.5">Persis Foto Lampiran</div>
                       </button>
+
                       <button
                         type="button"
                         onClick={() => setPrintFormat('card_cr80')}
                         className={`p-2.5 rounded-xl border text-left transition-all ${
                           printFormat === 'card_cr80'
-                            ? 'bg-amber-500/10 border-amber-500 text-white font-bold'
+                            ? 'bg-amber-500/15 border-amber-500 text-white font-bold ring-1 ring-amber-500/30'
                             : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                         }`}
                       >
-                        <div className="font-semibold text-xs">Kartu Kasir CR80</div>
-                        <div className="text-[10px] text-slate-500">Ukuran Kartu ATM / Saku</div>
+                        <div className="font-semibold text-xs flex items-center gap-1.5">
+                          <CreditCard className="w-3 h-3 text-cyan-400" />
+                          <span>Kartu Kasir CR80</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">Ukuran Kartu ATM / Dompet</div>
                       </button>
                     </div>
                   </div>
 
+                  {/* Theme Selector */}
                   <div>
                     <label className="block text-slate-300 font-semibold mb-1">
-                      Teks Cap Bulat Kanan Atas:
+                      Tema Visual:
                     </label>
-                    <input
-                      type="text"
-                      value={customStampText}
-                      onChange={(e) => setCustomStampText(e.target.value.toUpperCase())}
-                      placeholder="WOODS BARBERSHOP"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white uppercase font-bold text-xs"
-                    />
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Lingkaran stempel di pojok kanan atas kartu seperti contoh foto.
-                    </p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPrintDesignTheme('blue_wave')}
+                        className={`p-2 rounded-xl border text-left transition-all ${
+                          printDesignTheme === 'blue_wave'
+                            ? 'bg-blue-600/20 border-blue-500 text-blue-200 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-bold text-xs">Blue Wave (Foto Asli)</div>
+                        <div className="text-[9px] text-slate-400">Header Biru & Lengkungan</div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPrintDesignTheme('google_quadrant')}
+                        className={`p-2 rounded-xl border text-left transition-all ${
+                          printDesignTheme === 'google_quadrant'
+                            ? 'bg-amber-500/20 border-amber-500 text-amber-200 font-bold'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <div className="font-bold text-xs">Google 4-Warna</div>
+                        <div className="text-[9px] text-slate-400">Kuning, Merah, Hijau, Biru</div>
+                      </button>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1">
-                      Subteks Bahasa Inggris:
-                    </label>
-                    <input
-                      type="text"
-                      value={customSubtitle}
-                      onChange={(e) => setCustomSubtitle(e.target.value)}
-                      placeholder="Help with a review on Google"
-                      className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white text-xs"
-                    />
+                  {/* Header Line 1 & Line 2 */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">
+                        Header Baris 1:
+                      </label>
+                      <input
+                        type="text"
+                        value={printHeaderLine1}
+                        onChange={(e) => setPrintHeaderLine1(e.target.value.toUpperCase())}
+                        placeholder="MAKE OUR DAY,"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">
+                        Header Baris 2:
+                      </label>
+                      <input
+                        type="text"
+                        value={printHeaderLine2}
+                        onChange={(e) => setPrintHeaderLine2(e.target.value.toUpperCase())}
+                        placeholder="LEAVE US A REVIEW!"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-xs"
+                      />
+                    </div>
                   </div>
 
-                  <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl space-y-1">
-                    <div className="text-[11px] font-bold text-amber-300 flex items-center gap-1.5">
+                  {/* Tap Text & Serial Badge */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">
+                        Teks Bawah Tap:
+                      </label>
+                      <input
+                        type="text"
+                        value={printTapText}
+                        onChange={(e) => setPrintTapText(e.target.value)}
+                        placeholder="Tap or Scan"
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-300 font-semibold mb-1">
+                        ID Serial di Bawah QR:
+                      </label>
+                      <input
+                        type="text"
+                        value={printSerialText}
+                        onChange={(e) => setPrintSerialText(e.target.value.toUpperCase())}
+                        placeholder={selectedCardForPrint.card_id}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-xs"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Show Business Name Toggle */}
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="checkbox"
+                      id="showBusinessToggle"
+                      checked={printShowBusinessName}
+                      onChange={(e) => setPrintShowBusinessName(e.target.checked)}
+                      className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 accent-blue-600 cursor-pointer"
+                    />
+                    <label htmlFor="showBusinessToggle" className="text-slate-300 font-medium cursor-pointer">
+                      Tampilkan Nama Bisnis di Standee ({selectedCardForPrint.business_name || 'BISNIS ANDA'})
+                    </label>
+                  </div>
+
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-1">
+                    <div className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>Standar Cetak Akrilik 300 DPI</span>
+                      <span>Standar Cetak Akrilik Presisi 300 DPI</span>
                     </div>
                     <p className="text-[10px] text-slate-300 leading-relaxed">
-                      Warna 4-kuadran Google (Kuning, Merah, Hijau, Biru) dan QR code akan dicetak tajam tanpa pecah.
+                      Lengkungan wave biru Google, logo resmi 4-warna Google, 5 bintang emas, dan barcode QR akan dicetak tajam tanpa pecah.
                     </p>
                   </div>
                 </div>
@@ -1832,167 +2504,244 @@ export default function App() {
               {/* Right Column: Visual Preview & Printable Element */}
               <div className="lg:col-span-7 flex flex-col items-center justify-center">
                 
-                {/* Printable container with ID `print-root` */}
-                <div 
-                  id="print-root" 
-                  className={`w-full ${
-                    printFormat === 'standee_acrylic' ? 'max-w-[390px]' : 'max-w-[440px]'
-                  } rounded-3xl p-4 sm:p-5 relative overflow-hidden shadow-2xl transition-all page-break-avoid bg-white select-none`}
-                >
+                {/* 3D Acrylic Standee Container Wrapper */}
+                <div className="w-full flex flex-col items-center">
                   
-                  {printFormat === 'standee_acrylic' ? (
-                    <>
-                      {/* ========================================================================= */}
-                      {/* GOOGLE 4-QUADRANT COLOR FRAME (Sesuai gambar referensi akrilik)           */}
-                      {/* ========================================================================= */}
-                      <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 pointer-events-none">
-                        <div className="bg-[#FBBC05]" /> {/* Top-Left: Google Yellow / Gold */}
-                        <div className="bg-[#EA4335]" /> {/* Top-Right: Google Red */}
-                        <div className="bg-[#34A853]" /> {/* Bottom-Left: Google Green */}
-                        <div className="bg-[#4285F4]" /> {/* Bottom-Right: Google Blue */}
-                      </div>
+                  {/* Printable container with ID `print-root` (Directly printable and canvas-ready) */}
+                  <div 
+                    id="print-root" 
+                    className={`w-full ${
+                      printFormat === 'standee_acrylic' ? 'max-w-[340px] sm:max-w-[380px]' : 'max-w-[340px] sm:max-w-[440px]'
+                    } rounded-3xl overflow-hidden shadow-2xl transition-all page-break-avoid bg-white select-none mx-auto border border-slate-200/90 relative`}
+                  >
+                    {printFormat === 'standee_acrylic' ? (
+                      printDesignTheme === 'blue_wave' ? (
+                        /* ========================================================================= */
+                        /* DESAIN UTAMA: PERSIS FOTO LAMPIRAN (BLUE WAVE + GOOGLE G + 5 BINTANG)     */
+                        /* ========================================================================= */
+                        <div className="w-full bg-white flex flex-col items-center text-center relative overflow-hidden">
+                          
+                          {/* Top Royal Blue Header with Scallop Wave */}
+                          <div className="relative w-full bg-[#0866d6] pt-6 pb-9 px-4 text-center overflow-hidden">
+                            <div className="relative z-10 space-y-0.5">
+                              <h3 className="font-extrabold text-white text-base sm:text-lg tracking-wider uppercase leading-tight drop-shadow-xs">
+                                {printHeaderLine1 || 'MAKE OUR DAY,'}
+                              </h3>
+                              <h2 className="font-black text-white text-lg sm:text-xl tracking-wider uppercase leading-tight drop-shadow-xs">
+                                {printHeaderLine2 || 'LEAVE US A REVIEW!'}
+                              </h2>
+                              {printShowBusinessName && selectedCardForPrint.business_name && (
+                                <p className="text-[11px] font-bold text-blue-100 uppercase tracking-widest mt-1 opacity-95">
+                                  • {selectedCardForPrint.business_name} •
+                                </p>
+                              )}
+                            </div>
 
-                      {/* Inner White Rounded Card */}
-                      <div className="relative z-10 bg-white rounded-[24px] p-5 sm:p-6 flex flex-col items-center text-center shadow-md h-full">
-                        
-                        {/* Top Header: Google 'G' (Left) and Circular Business Stamp (Right) */}
-                        <div className="w-full flex items-center justify-between mb-2">
-                          {/* Google 'G' Official 4-Color Logo */}
-                          <div className="w-11 h-11 flex items-center justify-center">
-                            <svg viewBox="0 0 24 24" className="w-10 h-10 drop-shadow-sm">
+                            {/* Scalloped wave curve curving up in the middle */}
+                            <div className="absolute -bottom-1 left-0 right-0 w-full overflow-hidden leading-none pointer-events-none">
+                              <svg viewBox="0 0 400 48" preserveAspectRatio="none" className="w-full h-8 sm:h-10 text-white fill-current">
+                                <path d="M 0,0 C 110,40 150,8 200,8 C 250,8 290,40 400,0 L 400,48 L 0,48 Z" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          {/* Center Google "G" Multicolor Logo on White Disc */}
+                          <div className="relative -mt-6 sm:-mt-7 z-20 flex justify-center">
+                            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white shadow-lg p-2.5 flex items-center justify-center border-3 border-white ring-1 ring-black/10">
+                              <svg viewBox="0 0 24 24" className="w-full h-full drop-shadow-xs">
+                                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                              </svg>
+                            </div>
+                          </div>
+
+                          {/* 5 Golden Stars */}
+                          <div className="flex items-center justify-center gap-1 sm:gap-1.5 text-[#FBBC05] text-2xl sm:text-3xl mt-2 mb-2 drop-shadow-xs">
+                            <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+                          </div>
+
+                          {/* Dual Columns: Hand NFC Tap vs QR Code */}
+                          <div className="w-full grid grid-cols-2 gap-2 items-center px-4 sm:px-6 py-2 my-1">
+                            
+                            {/* Left: Hand holding phone NFC Illustration */}
+                            <div className="flex flex-col items-center justify-center text-center">
+                              <div className="w-20 h-20 sm:w-24 sm:h-24 flex items-center justify-center">
+                                <svg viewBox="0 0 100 100" className="w-full h-full text-slate-900" fill="none">
+                                  <g transform="translate(14, 8)">
+                                    <g transform="rotate(-10 32 45)">
+                                      <rect x="12" y="10" width="38" height="66" rx="6" stroke="#0f172a" strokeWidth="2.8" fill="#ffffff" />
+                                      <line x1="20" y1="16" x2="42" y2="16" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                                      <line x1="26" y1="70" x2="36" y2="70" stroke="#0f172a" strokeWidth="2" strokeLinecap="round" />
+                                      <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                      <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                      <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    </g>
+                                    <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    <path d="M 4 65 L 0 80" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                    <path d="M 26 84 L 20 95" stroke="#0f172a" strokeWidth="2.8" strokeLinecap="round" />
+                                  </g>
+                                </svg>
+                              </div>
+                              <span className="font-extrabold text-xs sm:text-sm text-slate-900 tracking-tight mt-1">
+                                {printTapText || 'Tap or Scan'}
+                              </span>
+                            </div>
+
+                            {/* Right: QR Code + Serial ID Tag */}
+                            <div className="flex flex-col items-center justify-center text-center">
+                              <div className="w-24 h-24 sm:w-28 sm:h-28 bg-white p-1 rounded-xl border border-slate-200 shadow-sm flex items-center justify-center">
+                                {cardPrintQrUrl ? (
+                                  <img src={cardPrintQrUrl} alt="Google Review QR" className="w-full h-full object-contain" />
+                                ) : (
+                                  <div className="w-full h-full bg-slate-100 animate-pulse rounded" />
+                                )}
+                              </div>
+                              <span className="font-mono font-bold text-[10px] sm:text-xs text-slate-700 tracking-wider mt-1 px-2.5 py-0.5 bg-slate-100 rounded-md border border-slate-200">
+                                {printSerialText || selectedCardForPrint.card_id}
+                              </span>
+                            </div>
+
+                          </div>
+
+                          {/* Bottom Footer */}
+                          <div className="w-full py-2.5 border-t border-slate-100 text-center text-[10px] text-slate-400 font-medium">
+                            Built-in NFC & QR Code • Tap/Scan to Review
+                          </div>
+
+                        </div>
+                      ) : (
+                        /* Google 4-Quadrant Mode (Alternative) */
+                        <div className="p-4 bg-white text-center">
+                          <div className="h-2 w-full flex rounded-full overflow-hidden mb-3">
+                            <div className="w-1/4 bg-[#FBBC05]" />
+                            <div className="w-1/4 bg-[#EA4335]" />
+                            <div className="w-1/4 bg-[#34A853]" />
+                            <div className="w-1/4 bg-[#4285F4]" />
+                          </div>
+                          <h3 className="font-extrabold text-slate-900 text-base">{printHeaderLine1}</h3>
+                          <h2 className="font-black text-slate-900 text-lg">{printHeaderLine2}</h2>
+                          <div className="text-[#FBBC05] text-2xl my-2">★★★★★</div>
+                          <div className="grid grid-cols-2 gap-2 items-center my-3">
+                            <div className="text-center font-bold text-xs text-slate-800">
+                              ⚡ {printTapText}
+                            </div>
+                            <div className="flex justify-center">
+                              {cardPrintQrUrl && <img src={cardPrintQrUrl} alt="QR" className="w-20 h-20" />}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      /* ========================================================================= */
+                      /* CR80 POCKET CARD FORMAT (Ukuran Saku / ATM)                                */
+                      /* ========================================================================= */
+                      <div className="p-4 bg-white text-slate-900 relative">
+                        {/* Top Blue Wave accent */}
+                        <div className="bg-[#0866d6] -mx-4 -mt-4 px-4 py-2.5 rounded-t-2xl flex items-center justify-between text-white">
+                          <div>
+                            <div className="font-extrabold text-xs">{printHeaderLine1}</div>
+                            <div className="font-black text-sm">{printHeaderLine2}</div>
+                          </div>
+                          <div className="w-8 h-8 rounded-full bg-white p-1 flex items-center justify-center">
+                            <svg viewBox="0 0 24 24" className="w-6 h-6">
                               <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
                               <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
                               <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
                               <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
                             </svg>
                           </div>
-
-                          {/* Business Stamp Badge (Like WOODS BARBERSHOP in reference) */}
-                          <div className="w-13 h-13 rounded-full border-2 border-black flex flex-col items-center justify-center p-1 text-center font-black text-black">
-                            <span className="text-[9px] leading-[1.1] uppercase font-extrabold tracking-tight">
-                              {customStampText || selectedCardForPrint.business_name || 'WOODS BARBER'}
-                            </span>
-                          </div>
                         </div>
 
-                        {/* Business Name (Bold, Uppercase) */}
-                        <h4 className="font-black text-base sm:text-lg text-black tracking-tight uppercase mt-1 mb-1">
-                          {selectedCardForPrint.business_name || 'WOODS BARBERSHOP ADISUCIPTO'}
-                        </h4>
-
-                        {/* Headline & Subheadline */}
-                        <p className="font-bold text-sm text-slate-900 leading-snug">
-                          Bantu kami dengan ulasan di Google
-                        </p>
-                        <p className="text-[11px] text-slate-600 font-medium mb-1">
-                          {customSubtitle}
-                        </p>
-
-                        {/* 5 Golden Rating Stars */}
-                        <div className="flex items-center justify-center gap-1 text-[#FBBC05] text-xl my-1 drop-shadow-xs">
-                          <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
-                        </div>
-
-                        {/* Dual Tap NFC / Scan QR Side-by-Side */}
-                        <div className="w-full flex items-center justify-around my-2 py-1">
-                          
-                          {/* Left: Tap NFC */}
-                          <div className="flex flex-col items-center justify-center w-5/12">
-                            <div className="w-16 h-16 sm:w-18 sm:h-18 flex items-center justify-center">
-                              <svg viewBox="0 0 100 100" className="w-14 h-14 text-slate-900 stroke-current fill-none">
-                                <path d="M 25 35 A 35 35 0 0 1 75 35" strokeWidth="5.5" strokeLinecap="round" />
-                                <path d="M 33 43 A 24 24 0 0 1 67 43" strokeWidth="5.5" strokeLinecap="round" />
-                                <path d="M 41 51 A 13 13 0 0 1 59 51" strokeWidth="5.5" strokeLinecap="round" />
-                                <rect x="28" y="58" width="44" height="28" rx="4" strokeWidth="5" fill="#f8fafc" />
-                                <path d="M 68 70 C 76 72, 80 82, 74 90 L 52 90" strokeWidth="4.5" strokeLinecap="round" />
-                              </svg>
+                        <div className="flex items-center justify-between gap-3 mt-3">
+                          <div>
+                            <div className="flex items-center gap-1 text-[#FBBC05] text-xs mb-1">
+                              ★★★★★
                             </div>
-                            <span className="font-extrabold text-xs text-black mt-1">Tap NFC</span>
-                          </div>
-
-                          {/* Middle: Vertical Divider with 'Atau' */}
-                          <div className="relative flex flex-col items-center justify-center h-20">
-                            <div className="w-[1.5px] h-full bg-slate-300" />
-                            <span className="absolute bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-600 rounded">
-                              Atau
+                            <h4 className="font-black text-sm text-black uppercase">
+                              {selectedCardForPrint.business_name || 'BISNIS ANDA'}
+                            </h4>
+                            <div className="mt-2 text-xs font-bold text-blue-600 flex items-center gap-1">
+                              <span>⚡ {printTapText}</span>
+                            </div>
+                            <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                              ID: {printSerialText || selectedCardForPrint.card_id}
                             </span>
                           </div>
 
-                          {/* Right: Scan QR */}
-                          <div className="flex flex-col items-center justify-center w-5/12">
-                            <div className="w-18 h-18 sm:w-20 sm:h-20 bg-white p-1 rounded-lg border border-slate-200 shadow-sm flex items-center justify-center">
-                              {cardPrintQrUrl ? (
-                                <img src={cardPrintQrUrl} alt="QR Code" className="w-full h-full object-contain" />
-                              ) : (
-                                <div className="w-full h-full bg-slate-100 animate-pulse rounded" />
-                              )}
+                          <div className="text-center shrink-0">
+                            <div className="w-20 h-20 bg-white p-1 rounded-lg border border-slate-300">
+                              {cardPrintQrUrl && <img src={cardPrintQrUrl} alt="QR" className="w-full h-full object-contain" />}
                             </div>
-                            <span className="font-extrabold text-xs text-black mt-1">Scan QR</span>
-                          </div>
-
-                        </div>
-
-                        {/* Bottom Thank You Message */}
-                        <div className="pt-2 border-t border-slate-100 w-full">
-                          <p className="font-extrabold text-xs text-slate-900 leading-snug">
-                            Terima kasih atas dukungan anda :)
-                          </p>
-                          <p className="text-[10px] text-slate-600 font-medium">
-                            Thank you for your support :)
-                          </p>
-                        </div>
-
-                      </div>
-                    </>
-                  ) : (
-                    /* CR80 Landscape Format */
-                    <div className="border border-slate-200 rounded-2xl p-4 bg-white text-slate-900 relative">
-                      {/* 4 Color top band */}
-                      <div className="h-1.5 w-full flex rounded-full overflow-hidden mb-3">
-                        <div className="w-1/4 bg-[#FBBC05]" />
-                        <div className="w-1/4 bg-[#EA4335]" />
-                        <div className="w-1/4 bg-[#34A853]" />
-                        <div className="w-1/4 bg-[#4285F4]" />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-1 text-[#FBBC05] text-xs mb-1">
-                            ★★★★★
-                          </div>
-                          <h4 className="font-black text-sm text-black uppercase">
-                            {selectedCardForPrint.business_name || 'WOODS BARBERSHOP'}
-                          </h4>
-                          <p className="text-[11px] font-bold text-slate-800">
-                            Bantu kami dengan ulasan di Google
-                          </p>
-                          <p className="text-[10px] text-slate-500">
-                            {customSubtitle}
-                          </p>
-                          <div className="mt-3 flex items-center gap-2 text-xs font-bold text-black">
-                            <span>⚡ Tap NFC Kartu</span>
-                            <span className="text-[9px] text-slate-400 font-mono">[{selectedCardForPrint.card_id}]</span>
+                            <span className="text-[9px] font-bold text-black block mt-0.5">Scan QR</span>
                           </div>
                         </div>
 
-                        <div className="text-center shrink-0">
-                          <div className="w-20 h-20 bg-white p-1 rounded-lg border border-slate-300">
-                            {cardPrintQrUrl && <img src={cardPrintQrUrl} alt="QR" className="w-full h-full object-contain" />}
-                          </div>
-                          <span className="text-[9px] font-bold text-black block mt-0.5">Scan QR</span>
+                        <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-500 font-medium text-center">
+                          Direct Google Review • Built-in NFC & QR Code
                         </div>
                       </div>
+                    )}
+                  </div>
 
-                      <div className="mt-3 pt-2 border-t border-slate-100 text-[10px] text-slate-600 font-medium text-center">
-                        Terima kasih atas dukungan anda :)
-                      </div>
+                  {/* Acrylic Foot / L-Stand Base (Visual Preview Only) */}
+                  {printFormat === 'standee_acrylic' && (
+                    <div className="no-print w-[80%] max-w-[300px] h-3.5 bg-gradient-to-b from-slate-200/90 to-slate-300/80 rounded-b-xl shadow-lg border-t border-slate-300 relative -mt-0.5 mx-auto">
+                      <div className="absolute inset-x-8 top-1 h-[2px] bg-white/70 rounded-full" />
                     </div>
                   )}
-
                 </div>
 
-                <div className="no-print text-[11px] text-slate-500 mt-3 text-center">
-                  * Tampilan di atas adalah ukuran display presisi yang akan langsung tercetak pada printer / file gambar.
+                {/* 4 Feature Callouts Matching User Screenshot */}
+                <div className="no-print w-full max-w-[480px] grid grid-cols-2 gap-2 mt-5 text-left">
+                  <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2">
+                    <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 shrink-0">
+                      <Check className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-[11px]">Ready to use</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Langsung siap ditaruh di meja kasir.</div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
+                      <Sparkles className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-[11px]">Durable Acrylic</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Bahan tebal awet indoor & outdoor.</div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2">
+                    <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 shrink-0">
+                      <Smartphone className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-[11px]">Built-in NFC</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Tap dengan iPhone & Android.</div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-start gap-2">
+                    <div className="p-1.5 rounded-lg bg-cyan-500/10 text-cyan-400 shrink-0">
+                      <QrCode className="w-3.5 h-3.5" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-white text-[11px]">Unique QR code</div>
+                      <div className="text-[10px] text-slate-400 leading-tight">Scan kamera langsung buka review.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="no-print text-[11px] text-slate-400 mt-3 text-center">
+                  * Tampilan di atas adalah ukuran presisi yang langsung tercetak pada printer / file gambar 300 DPI.
                 </div>
               </div>
 
@@ -2000,6 +2749,7 @@ export default function App() {
 
           </div>
         </div>
+
       )}
 
     </div>
