@@ -1197,6 +1197,7 @@ export default function App() {
                   <div className="w-[78%] h-3.5 bg-gradient-to-b from-slate-200/90 to-slate-300/80 rounded-b-xl shadow-md border-t border-slate-300 relative -mt-0.5 mx-auto">
                     <div className="absolute inset-x-8 top-1 h-[2px] bg-white/70 rounded-full" />
                   </div>
+                </div>
 
 
 
