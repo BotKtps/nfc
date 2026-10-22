@@ -39,7 +39,10 @@ import {
   CreditCard,
   Building2,
   ThumbsUp,
-  X
+  X,
+  Upload,
+  Image as ImageIcon,
+  Crosshair,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import {
@@ -52,6 +55,8 @@ import {
   downloadCardPng,
   printImages,
   safeFileName,
+  DEFAULT_TEMPLATE,
+  type TemplateSettings,
 } from './cardDesign';
 
 interface Card {
@@ -136,6 +141,68 @@ export default function App() {
   const [massSelectedIds, setMassSelectedIds] = useState<string[]>([]);
   const [massFormat, setMassFormat] = useState<CardFormat>('square');
   const [massPerPage, setMassPerPage] = useState<1 | 2 | 4>(2);
+
+  // ---------- Template milik pengguna ----------
+  const [templateSettings, setTemplateSettings] = useState<TemplateSettings>(() => {
+    try {
+      const raw = localStorage.getItem('tapulasan_template');
+      if (raw) return { ...DEFAULT_TEMPLATE, ...(JSON.parse(raw) as Partial<TemplateSettings>) };
+    } catch {
+      /* abaikan */
+    }
+    return DEFAULT_TEMPLATE;
+  });
+  const [templateMode, setTemplateMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('tapulasan_template_mode') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const templateInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tapulasan_template', JSON.stringify(templateSettings));
+      localStorage.setItem('tapulasan_template_mode', templateMode ? '1' : '0');
+    } catch {
+      /* kuota penuh / private mode */
+    }
+  }, [templateSettings, templateMode]);
+
+  const activeTemplate = templateMode && templateSettings.image ? templateSettings : null;
+
+  const handleTemplateUpload = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) {
+      alert('Format harus PNG, JPG, atau WEBP.');
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      alert('Ukuran gambar maksimal 6 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '');
+      const probe = new Image();
+      probe.onload = () => {
+        // Template persegi -> posisi QR bawaan lampiran; selain itu tetap di tengah-kanan.
+        const square = Math.abs(probe.width / probe.height - 1) < 0.06;
+        setTemplateSettings((prev) => ({
+          ...prev,
+          image: dataUrl,
+          fileName: file.name,
+          ...(square ? { qrX: DEFAULT_TEMPLATE.qrX, qrY: DEFAULT_TEMPLATE.qrY, qrSize: DEFAULT_TEMPLATE.qrSize } : {}),
+        }));
+        setTemplateMode(true);
+      };
+      probe.onerror = () => alert('Gambar tidak bisa dibaca. Coba file lain.');
+      probe.src = dataUrl;
+    };
+    reader.onerror = () => alert('Gagal membaca file.');
+    reader.readAsDataURL(file);
+  };
 
   // Berapa kartu yang benar-benar muat di 1 halaman A4 (margin 8mm -> 194 x 281 mm).
   // Standee 10 x 10 cm hanya muat 1 kolom, jadi maksimal 2 per halaman.
@@ -651,6 +718,7 @@ export default function App() {
     serial: printSerialText,
     showBusinessName: printShowBusinessName,
     showSerial: printShowSerial,
+    template: activeTemplate,
   });
 
   const openCardPrintModal = async (card: Card) => {
@@ -734,7 +802,7 @@ export default function App() {
       const cards = adminCards.filter((c) => massSelectedIds.includes(c.card_id));
       const images: string[] = [];
       for (let i = 0; i < cards.length; i++) {
-        const canvas = await renderCardCanvas(cards[i], { format: massFormat });
+        const canvas = await renderCardCanvas(cards[i], { format: massFormat, template: activeTemplate });
         images.push(canvas.toDataURL('image/png'));
         setMassProgress(Math.round(((i + 1) / cards.length) * 100));
         await new Promise((r) => setTimeout(r, 20));
@@ -758,7 +826,7 @@ export default function App() {
     try {
       const cards = adminCards.filter((c) => massSelectedIds.includes(c.card_id));
       for (let i = 0; i < cards.length; i++) {
-        const canvas = await renderCardCanvas(cards[i], { format: massFormat });
+        const canvas = await renderCardCanvas(cards[i], { format: massFormat, template: activeTemplate });
         const url = canvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.href = url;
@@ -2189,9 +2257,177 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* ============ Template milik pengguna ============ */}
+                  <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-3 space-y-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-bold text-[11px] text-white flex items-center gap-1.5">
+                          <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                          Pakai Template Sendiri
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">
+                          Upload gambar desain Anda (PNG/JPG). QR otomatis ditempel di atasnya.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={templateMode}
+                        disabled={!templateSettings.image}
+                        onClick={() => setTemplateMode((v) => !v)}
+                        className={`shrink-0 mt-0.5 w-10 h-5 rounded-full transition-colors relative ${
+                          templateMode && templateSettings.image ? 'bg-cyan-500' : 'bg-slate-700'
+                        } ${!templateSettings.image ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
+                        title={templateSettings.image ? 'Aktif / nonaktifkan template' : 'Upload gambar dulu'}
+                      >
+                        <span
+                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${
+                            templateMode && templateSettings.image ? 'left-[22px]' : 'left-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+
+                    <input
+                      ref={templateInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleTemplateUpload(e.target.files?.[0]);
+                        e.target.value = '';
+                      }}
+                    />
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => templateInputRef.current?.click()}
+                        className="flex-1 px-2.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-semibold text-[11px] flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-cyan-400" />
+                        {templateSettings.image ? 'Ganti Gambar' : 'Upload Gambar Template'}
+                      </button>
+                      {templateSettings.image && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTemplateSettings(DEFAULT_TEMPLATE);
+                            setTemplateMode(false);
+                          }}
+                          className="px-2 py-2 rounded-lg bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/40 text-slate-400 hover:text-rose-400 cursor-pointer"
+                          title="Hapus template"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {templateSettings.image && (
+                      <>
+                        <div className="flex items-center gap-2 rounded-lg bg-slate-950/60 border border-slate-800 p-1.5">
+                          <img
+                            src={templateSettings.image}
+                            alt="Template"
+                            className="w-12 h-12 rounded object-cover border border-slate-700"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10px] text-slate-300 truncate font-mono">
+                              {templateSettings.fileName || 'template.png'}
+                            </div>
+                            <div className="text-[9px] text-cyan-400 font-semibold">
+                              {templateMode ? 'AKTIF — desain Anda dipakai' : 'Nonaktif'}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className={`space-y-2 ${templateMode ? '' : 'opacity-50 pointer-events-none'}`}>
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] text-slate-400 font-semibold flex items-center gap-1">
+                              <Crosshair className="w-3 h-3" /> Posisi & Ukuran QR
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setTemplateSettings((p) => ({
+                                  ...p,
+                                  qrX: DEFAULT_TEMPLATE.qrX,
+                                  qrY: DEFAULT_TEMPLATE.qrY,
+                                  qrSize: DEFAULT_TEMPLATE.qrSize,
+                                }))
+                              }
+                              className="text-[9px] text-amber-400 hover:text-amber-300 font-semibold cursor-pointer"
+                            >
+                              Reset
+                            </button>
+                          </div>
+
+                          {(
+                            [
+                              { key: 'qrX', label: 'Geser Kiri/Kanan', min: 0.05, max: 0.95 },
+                              { key: 'qrY', label: 'Geser Atas/Bawah', min: 0.05, max: 0.95 },
+                              { key: 'qrSize', label: 'Ukuran QR', min: 0.05, max: 0.6 },
+                            ] as const
+                          ).map(({ key, label, min, max }) => (
+                            <div key={key}>
+                              <div className="flex items-center justify-between text-[10px] text-slate-400">
+                                <span>{label}</span>
+                                <span className="font-mono text-white">
+                                  {Math.round((templateSettings[key] as number) * 100)}%
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min={min * 100}
+                                max={max * 100}
+                                step={0.5}
+                                value={(templateSettings[key] as number) * 100}
+                                onChange={(e) =>
+                                  setTemplateSettings((p) => ({
+                                    ...p,
+                                    [key]: Number(e.target.value) / 100,
+                                  }))
+                                }
+                                className="w-full accent-cyan-400 cursor-pointer"
+                              />
+                            </div>
+                          ))}
+
+                          <div className="flex items-center gap-3 pt-0.5">
+                            <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={templateSettings.showQr}
+                                onChange={(e) => setTemplateSettings((p) => ({ ...p, showQr: e.target.checked }))}
+                                className="accent-cyan-400 cursor-pointer"
+                              />
+                              Tampilkan QR
+                            </label>
+                            <label className="flex items-center gap-1.5 text-[10px] text-slate-300 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={templateSettings.whitePad}
+                                onChange={(e) => setTemplateSettings((p) => ({ ...p, whitePad: e.target.checked }))}
+                                className="accent-cyan-400 cursor-pointer"
+                              />
+                              Alas putih QR
+                            </label>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
                   {/* Presets */}
-                  <div>
-                    <label className="block text-slate-300 font-semibold mb-1.5">Bahasa Teks:</label>
+                  <div className={activeTemplate ? 'opacity-50 pointer-events-none' : ''}>
+                    <label className="block text-slate-300 font-semibold mb-1.5">
+                      Bahasa Teks:
+                      {activeTemplate && (
+                        <span className="ml-1 text-[9px] font-normal text-cyan-400">
+                          (tidak dipakai — template Anda sudah berisi teks)
+                        </span>
+                      )}
+                    </label>
                     <div className="grid grid-cols-3 gap-1.5">
                       <button
                         type="button"
@@ -2392,6 +2628,7 @@ export default function App() {
                         serial: printSerialText,
                         showBusinessName: printShowBusinessName,
                         showSerial: printShowSerial,
+                        template: activeTemplate,
                       }}
                       className="page-break-avoid"
                     />

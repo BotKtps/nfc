@@ -26,6 +26,39 @@ export interface CardLike {
   gmaps_url?: string | null;
 }
 
+/**
+ * Mode "Template Sendiri": gambar milik pengguna dipakai apa adanya sebagai
+ * latar kartu, lalu QR code ditempel di atasnya pada posisi & ukuran yang
+ * diatur. Ini membuat hasil cetak 100% identik dengan file desain pengguna.
+ */
+export interface TemplateSettings {
+  /** Data URL (base64) gambar template milik pengguna. */
+  image: string;
+  /** Titik tengah QR, 0..1 relatif terhadap lebar/tinggi kartu. */
+  qrX: number;
+  qrY: number;
+  /** Ukuran sisi QR, 0..1 relatif terhadap lebar kartu. */
+  qrSize: number;
+  /** Tampilkan QR di atas template. */
+  showQr: boolean;
+  /** Beri alas putih di belakang QR agar tetap mudah discan. */
+  whitePad: boolean;
+  /** Nama file asli, hanya untuk ditampilkan di UI. */
+  fileName?: string;
+}
+
+export const DEFAULT_TEMPLATE: TemplateSettings = {
+  image: '',
+  // Posisi bawaan = kotak QR pada lampiran (frame sudut di kanan bawah).
+  qrX: 0.6965,
+  qrY: 0.5329,
+  // 0,148 = pas di dalam frame sudut lampiran (tidak menutupi bracket).
+  qrSize: 0.148,
+  showQr: true,
+  // Template lampiran sudah punya area putih, jadi tidak perlu alas tambahan.
+  whitePad: false,
+};
+
 export interface CardDesignOptions {
   format?: CardFormat;
   businessName?: string | null;
@@ -41,6 +74,8 @@ export interface CardDesignOptions {
   thanksId?: string;
   thanksEn?: string;
   qrDataUrl?: string;
+  /** Bila diisi, desain memakai gambar template pengguna (bukan desain bawaan). */
+  template?: TemplateSettings | null;
 }
 
 export const DEFAULT_DESIGN = {
@@ -293,12 +328,12 @@ export function getCardTargetUrl(card: CardLike): string {
   return `https://example.com/r/${card.card_id}`;
 }
 
-export async function makeQrDataUrl(card: CardLike, width = 720): Promise<string> {
+export async function makeQrDataUrl(card: CardLike, width = 720, transparent = false): Promise<string> {
   return QRCode.toDataURL(getCardTargetUrl(card), {
     width,
-    margin: 1,
+    margin: transparent ? 0 : 1,
     errorCorrectionLevel: 'M',
-    color: { dark: '#000000', light: '#ffffff' },
+    color: { dark: '#000000', light: transparent ? '#00000000' : '#ffffff' },
   });
 }
 
@@ -326,7 +361,6 @@ export async function renderCardCanvas(
     businessName: options.businessName || card.business_name || '',
   } as typeof DEFAULT_DESIGN & { businessName: string; serial: string; qrDataUrl?: string };
   const format: CardFormat = opts.format || 'square';
-  const qr = opts.qrDataUrl || (await makeQrDataUrl(card));
 
   const canvas = document.createElement('canvas');
   const size = CARD_SIZES[format];
@@ -335,12 +369,66 @@ export async function renderCardCanvas(
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
 
+  // --- Mode template milik pengguna -----------------------------------------
+  if (options.template && options.template.image) {
+    const qr = opts.qrDataUrl || (await makeQrDataUrl(card, 1024, true));
+    await drawTemplateCard(ctx, canvas, options.template, qr);
+    return canvas;
+  }
+
+  const qr = opts.qrDataUrl || (await makeQrDataUrl(card));
+
   if (format === 'cr80') {
     await drawCr80(ctx, canvas, opts, qr);
   } else {
     await drawSquare(ctx, canvas, opts, qr);
   }
   return canvas;
+}
+
+/**
+ * Menggambar kartu dari gambar template milik pengguna.
+ * Gambar di-"cover" ke seluruh kanvas (tanpa distorsi), lalu QR ditempel
+ * pada posisi & ukuran sesuai pengaturan.
+ */
+async function drawTemplateCard(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  tpl: TemplateSettings,
+  qr: string
+) {
+  const W = canvas.width;
+  const H = canvas.height;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  const tplImg = await loadImage(tpl.image);
+  const scale = Math.max(W / tplImg.width, H / tplImg.height);
+  const dw = tplImg.width * scale;
+  const dh = tplImg.height * scale;
+  ctx.drawImage(tplImg, (W - dw) / 2, (H - dh) / 2, dw, dh);
+
+  if (tpl.showQr === false) return;
+
+  const box = Math.max(24, W * (tpl.qrSize || DEFAULT_TEMPLATE.qrSize));
+  const cx = W * (tpl.qrX ?? DEFAULT_TEMPLATE.qrX);
+  const cy = H * (tpl.qrY ?? DEFAULT_TEMPLATE.qrY);
+  const x = cx - box / 2;
+  const y = cy - box / 2;
+
+  if (tpl.whitePad !== false) {
+    const pad = box * 0.06;
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    roundRectPath(ctx, x - pad, y - pad, box + pad * 2, box + pad * 2, box * 0.05);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const qrImg = await loadImage(qr);
+  ctx.drawImage(qrImg, x, y, box, box);
 }
 
 async function drawSquare(
@@ -781,7 +869,23 @@ interface PreviewProps {
 export const CardPreview: React.FC<PreviewProps> = ({ card, options = {}, qrDataUrl, className = '', id }) => {
   const [src, setSrc] = useState<string>('');
   const format = options.format || DEFAULT_DESIGN.format;
-  const key = JSON.stringify(options);
+
+  // Signature ringkas (tanpa base64 gambar) supaya tidak mahal dihitung tiap render.
+  const tpl = options.template;
+  const key = [
+    options.headerId,
+    options.headerEn,
+    options.tapTitle,
+    options.tapSub,
+    options.qrTitle,
+    options.qrSub,
+    options.thanksId,
+    options.thanksEn,
+    options.serial,
+    options.showBusinessName ? 1 : 0,
+    options.showSerial ? 1 : 0,
+    tpl ? `${tpl.image.length}:${tpl.qrX}:${tpl.qrY}:${tpl.qrSize}:${tpl.showQr ? 1 : 0}:${tpl.whitePad ? 1 : 0}` : '-',
+  ].join('|');
 
   useEffect(() => {
     let alive = true;
@@ -799,7 +903,7 @@ export const CardPreview: React.FC<PreviewProps> = ({ card, options = {}, qrData
       window.clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card.card_id, card.business_name, card.gmaps_url, key, qrDataUrl]);
+  }, [card.card_id, card.business_name, card.gmaps_url, key, qrDataUrl, format]);
 
   return (
     <div
