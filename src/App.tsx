@@ -136,6 +136,20 @@ export default function App() {
   const [massSelectedIds, setMassSelectedIds] = useState<string[]>([]);
   const [massFormat, setMassFormat] = useState<CardFormat>('square');
   const [massPerPage, setMassPerPage] = useState<1 | 2 | 4>(2);
+
+  // Berapa kartu yang benar-benar muat di 1 halaman A4 (margin 8mm -> 194 x 281 mm).
+  // Standee 10 x 10 cm hanya muat 1 kolom, jadi maksimal 2 per halaman.
+  const massMaxPerPage = React.useMemo(() => {
+    const mm = CARD_SIZES[massFormat].widthMm;
+    const GAP = 6;
+    const colsFit = Math.max(1, Math.floor((194 + GAP) / (mm + GAP)));
+    const rowsFit = Math.max(1, Math.floor((281 + GAP) / (mm + GAP)));
+    return Math.min(4, colsFit * rowsFit) as 1 | 2 | 4;
+  }, [massFormat]);
+
+  React.useEffect(() => {
+    if (massPerPage > massMaxPerPage) setMassPerPage(massMaxPerPage);
+  }, [massMaxPerPage, massPerPage]);
   const [massProcessing, setMassProcessing] = useState(false);
   const [massProgress, setMassProgress] = useState(0);
 
@@ -2454,21 +2468,33 @@ export default function App() {
               <div>
                 <label className="block text-slate-300 font-semibold mb-1">Kartu per Halaman A4:</label>
                 <div className="grid grid-cols-3 gap-2">
-                  {[1, 2, 4].map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setMassPerPage(n as 1 | 2 | 4)}
-                      className={`p-2 rounded-xl border text-center font-bold text-xs transition-all ${
-                        massPerPage === n
-                          ? 'bg-amber-500/15 border-amber-500 text-white'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {n} kartu
-                    </button>
-                  ))}
+                  {[1, 2, 4].map((n) => {
+                    const disabled = n > massMaxPerPage;
+                    return (
+                      <button
+                        key={n}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setMassPerPage(n as 1 | 2 | 4)}
+                        title={disabled ? `Tidak muat di A4 untuk ukuran ${CARD_SIZES[massFormat].mm}` : undefined}
+                        className={`p-2 rounded-xl border text-center font-bold text-xs transition-all ${
+                          massPerPage === n
+                            ? 'bg-amber-500/15 border-amber-500 text-white'
+                            : disabled
+                              ? 'bg-slate-900/40 border-slate-800/60 text-slate-600 cursor-not-allowed'
+                              : 'bg-slate-900 border-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {n} kartu
+                      </button>
+                    );
+                  })}
                 </div>
+                {massMaxPerPage < 4 && (
+                  <p className="text-[10px] text-slate-500 mt-1.5">
+                    Ukuran {CARD_SIZES[massFormat].mm}: maksimal {massMaxPerPage} kartu per halaman A4 (ukuran tetap 1:1, tidak diperkecil).
+                  </p>
+                )}
               </div>
             </div>
 

@@ -15,7 +15,7 @@
  *  - Footer gelombang hijau-biru + ucapan terima kasih bilingual
  * ---------------------------------------------------------------------------
  */
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 
 export type CardFormat = 'square' | 'cr80';
@@ -68,24 +68,6 @@ const MUTED = '#5F6368';
 /*  Helpers                                                                    */
 /* -------------------------------------------------------------------------- */
 
-function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace('#', '');
-  return [
-    parseInt(h.substring(0, 2), 16),
-    parseInt(h.substring(2, 4), 16),
-    parseInt(h.substring(4, 6), 16),
-  ];
-}
-
-function mix(a: string, b: string, t: number): string {
-  const [r1, g1, b1] = hexToRgb(a);
-  const [r2, g2, b2] = hexToRgb(b);
-  const r = Math.round(r1 + (r2 - r1) * t);
-  const g = Math.round(g1 + (g2 - g1) * t);
-  const bl = Math.round(b1 + (b2 - b1) * t);
-  return `rgb(${r},${g},${bl})`;
-}
-
 function roundRectPath(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -107,7 +89,27 @@ function roundRectPath(
   ctx.closePath();
 }
 
-/** Frame 4 warna Google dengan transisi halus di sudut (conic gradient). */
+/**
+ * Frame 4 warna Google.
+ * Mengikuti lampiran: warna SOLID per sisi dengan batas tajam pada sudut
+ * 337deg (kuning->merah), 70deg (merah->biru), 163deg (biru->hijau),
+ * 250deg (hijau->kuning). Sudut 0deg = atas, arah putar searah jarum jam.
+ */
+export const FRAME_STOPS: Array<{ from: number; color: string }> = [
+  { from: 337, color: GOOGLE_RED },
+  { from: 70, color: GOOGLE_BLUE },
+  { from: 163, color: GOOGLE_GREEN },
+  { from: 250, color: GOOGLE_YELLOW },
+];
+
+function frameColorAt(angleDeg: number): string {
+  const a = ((angleDeg % 360) + 360) % 360;
+  if (a >= 337 || a < 70) return GOOGLE_RED;
+  if (a < 163) return GOOGLE_BLUE;
+  if (a < 250) return GOOGLE_GREEN;
+  return GOOGLE_YELLOW;
+}
+
 function drawGoogleFrame(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -126,23 +128,15 @@ function drawGoogleFrame(
   const cx = x + w / 2;
   const cy = y + h / 2;
   const R = Math.hypot(w, h);
-  const stops: Array<[number, string]> = [
-    [0, GOOGLE_RED],
-    [90, GOOGLE_BLUE],
-    [180, GOOGLE_GREEN],
-    [270, GOOGLE_YELLOW],
-    [360, GOOGLE_RED],
-  ];
 
-  const step = 0.6;
-  for (let angle = 0; angle < 360; angle += step) {
-    const next = Math.min(angle + step + 0.35, 360);
-    let i = 0;
-    while (i < stops.length - 1 && angle >= stops[i + 1][0]) i++;
-    const [a0, c0] = stops[i];
-    const [a1, c1] = stops[Math.min(i + 1, stops.length - 1)];
-    const t = a1 === a0 ? 0 : (angle - a0) / (a1 - a0);
-    const color = mix(c0, c1, Math.min(1, Math.max(0, t)));
+  // Pra-isi seluruh ring dengan warna di sudut 0 agar tidak ada celah (seam) putih.
+  ctx.fillStyle = frameColorAt(0);
+  ctx.fillRect(x, y, w, h);
+
+  const step = 0.5;
+  for (let angle = -step; angle < 360; angle += step) {
+    const next = Math.min(angle + step + 0.3, 360);
+    const color = frameColorAt(angle + step / 2);
 
     const rad0 = ((angle - 90) * Math.PI) / 180;
     const rad1 = ((next - 90) * Math.PI) / 180;
@@ -201,24 +195,35 @@ function drawStars(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: 
   }
 }
 
+/**
+ * Ilustrasi "tap NFC" (landscape, sesuai lampiran):
+ * pad NFC + gelombang sinyal di kiri, kumparan di tengah, tangan memegang hp di kanan.
+ * viewBox 160x100 -> rasio 1.6 (lampiran: 31,2% x 20,1% dari panel dalam = 1,55).
+ */
 function nfcSvgMarkup(size: number) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="${size}" height="${size}" fill="none">
-    <g transform="translate(14, 8)">
-      <g transform="rotate(-10 32 45)">
-        <rect x="12" y="10" width="38" height="66" rx="6" stroke="#202124" stroke-width="3" fill="#ffffff" />
-        <line x1="20" y1="16" x2="42" y2="16" stroke="#202124" stroke-width="2.2" stroke-linecap="round" />
-        <line x1="26" y1="70" x2="36" y2="70" stroke="#202124" stroke-width="2.2" stroke-linecap="round" />
-        <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-        <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-        <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#202124" stroke-width="3" stroke-linecap="round" />
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 100" width="${size}" height="${size * 0.625}" fill="none">
+    <g stroke="#202124" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+      <!-- pad NFC -->
+      <circle cx="34" cy="54" r="13.5" />
+      <circle cx="34" cy="54" r="5.5" stroke-width="2.6" />
+      <!-- gelombang sinyal (kiri) -->
+      <path d="M 15.5 44.5 A 17 17 0 0 0 15.5 63.5" />
+      <path d="M 8.5 37.5 A 26 26 0 0 0 8.5 70.5" />
+      <path d="M 2 31 A 35 35 0 0 0 2 77" />
+      <!-- kumparan / induksi -->
+      <path d="M 56 45 A 10 10 0 0 1 56 63" />
+      <path d="M 63 39.5 A 17 17 0 0 1 63 68.5" />
+      <path d="M 70 34 A 24 24 0 0 1 70 74" />
+      <!-- tangan + hp -->
+      <g transform="rotate(-9 118 50)">
+        <rect x="100" y="14" width="40" height="68" rx="7" fill="#ffffff" />
+        <line x1="108" y1="20.5" x2="132" y2="20.5" stroke-width="2.6" />
+        <line x1="113" y1="75.5" x2="127" y2="75.5" stroke-width="2.6" />
       </g>
-      <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-      <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-      <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-      <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-      <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-      <path d="M 4 65 L 0 80" stroke="#202124" stroke-width="3" stroke-linecap="round" />
-      <path d="M 26 84 L 20 95" stroke="#202124" stroke-width="3" stroke-linecap="round" />
+      <!-- jari tangan menggenggam -->
+      <path d="M 92 63 C 97 60 104 64 105 71 C 106 78 99 84 91 82" />
+      <path d="M 90 82 C 99 91 116 91 124 82" />
+      <path d="M 88 71 C 92 68 98 71 99 77" stroke-width="2.6" />
     </g>
   </svg>`;
 }
@@ -302,8 +307,8 @@ export async function makeQrDataUrl(card: CardLike, width = 720): Promise<string
 /* -------------------------------------------------------------------------- */
 
 export const CARD_SIZES: Record<CardFormat, { width: number; height: number; widthMm: number; label: string; mm: string }> = {
-  // 1500x1500 px @300dpi = 127 x 127 mm (persegi, sesuai lampiran)
-  square: { width: 1500, height: 1500, widthMm: 127, label: 'Standee Persegi (sesuai lampiran)', mm: '127 x 127 mm' },
+  // 1181x1181 px @300dpi = 100 x 100 mm (10 x 10 cm, sesuai lampiran)
+  square: { width: 1181, height: 1181, widthMm: 100, label: 'Standee Persegi 10 x 10 cm (sesuai lampiran)', mm: '10 x 10 cm' },
   // CR80: 85.6 x 54 mm @300dpi
   cr80: { width: 1011, height: 638, widthMm: 85.6, label: 'Kartu Kasir CR80', mm: '85,6 x 54 mm' },
 };
@@ -369,23 +374,23 @@ async function drawSquare(
   const cx = W / 2;
 
   // Logo G
-  drawGoogleG(ctx, cx, innerY + innerH * 0.075, W * 0.14);
+  drawGoogleG(ctx, cx, innerY + innerH * 0.078, W * 0.145);
 
   // Judul
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillStyle = INK;
-  const s1 = fitFont(ctx, opts.headerId, innerW * 0.86, W * 0.042, '800');
+  const s1 = fitFont(ctx, opts.headerId, innerW * 0.88, W * 0.0332, '800');
   ctx.font = `800 ${s1}px "Plus Jakarta Sans", Arial, sans-serif`;
-  ctx.fillText(opts.headerId, cx, innerY + innerH * 0.19);
+  ctx.fillText(opts.headerId, cx, innerY + innerH * 0.189);
 
   ctx.fillStyle = MUTED;
-  const s2 = fitFont(ctx, opts.headerEn, innerW * 0.86, W * 0.028, '500');
+  const s2 = fitFont(ctx, opts.headerEn, innerW * 0.88, W * 0.0297, '500');
   ctx.font = `500 ${s2}px "Plus Jakarta Sans", Arial, sans-serif`;
   ctx.fillText(opts.headerEn, cx, innerY + innerH * 0.238);
 
   // Bintang
-  drawStars(ctx, cx, innerY + innerH * 0.435, W * 0.052);
+  drawStars(ctx, cx, innerY + innerH * 0.3105, W * 0.059);
 
   // Nama bisnis (opsional)
   if (opts.showBusinessName && opts.businessName) {
@@ -393,7 +398,7 @@ async function drawSquare(
     const name = opts.businessName.toUpperCase();
     const s3 = fitFont(ctx, name, innerW * 0.8, W * 0.022, '700');
     ctx.font = `700 ${s3}px "Plus Jakarta Sans", Arial, sans-serif`;
-    ctx.fillText(name, cx, innerY + innerH * 0.49);
+    ctx.fillText(name, cx, innerY + innerH * 0.372);
   }
 
   const topY = innerY + innerH * 0.418;
@@ -419,71 +424,88 @@ async function drawSquare(
   ctx.fillText(orText, cx, orY);
 
   // Kolom kiri: NFC
-  const leftX = innerX + innerW * 0.26;
-  const rightX = innerX + innerW * 0.74;
-  const iconCy = innerY + innerH * 0.558;
-  const nfcImg = await svgToImage(nfcSvgMarkup(512));
-  const nfcSize = W * 0.16;
-  ctx.drawImage(nfcImg, leftX - nfcSize / 2, iconCy - nfcSize / 2, nfcSize, nfcSize);
+  const leftX = innerX + innerW * 0.2707;
+  const rightX = innerX + innerW * 0.730;
+  const iconCy = innerY + innerH * 0.5542;
+  const nfcImg = await svgToImage(nfcSvgMarkup(768));
+  const nfcW = innerW * 0.3418;
+  const nfcH = innerH * 0.2513;
+  ctx.drawImage(nfcImg, leftX - nfcW / 2, iconCy - nfcH / 2, nfcW, nfcH);
 
-  // Kolom kanan: QR asli
-  const qrBox = W * 0.185;
-  const qrPad = W * 0.012;
+  // Kolom kanan: QR asli dengan frame sudut (sesuai lampiran)
+  const qrBox = innerW * 0.208;
+  const qrCx = rightX;
+  const qrCy = innerY + innerH * 0.5395;
+  const qrX0 = qrCx - qrBox / 2;
+  const qrY0 = qrCy - qrBox / 2;
+  const qrX1 = qrCx + qrBox / 2;
+  const qrY1 = qrCy + qrBox / 2;
+  const arm = innerW * 0.046;
+  const brTh = innerH * 0.044;
   ctx.save();
-  ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#E0E0E0';
-  ctx.lineWidth = Math.max(2, W * 0.0022);
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = brTh;
+  ctx.lineCap = 'butt';
   ctx.beginPath();
-  roundRectPath(ctx, rightX - qrBox / 2, iconCy - qrBox / 2, qrBox, qrBox, W * 0.012);
-  ctx.fill();
+  ctx.moveTo(qrX0, qrY0 + arm); ctx.lineTo(qrX0, qrY0); ctx.lineTo(qrX0 + arm, qrY0);
+  ctx.moveTo(qrX1 - arm, qrY0); ctx.lineTo(qrX1, qrY0); ctx.lineTo(qrX1, qrY0 + arm);
+  ctx.moveTo(qrX1, qrY1 - arm); ctx.lineTo(qrX1, qrY1); ctx.lineTo(qrX1 - arm, qrY1);
+  ctx.moveTo(qrX0 + arm, qrY1); ctx.lineTo(qrX0, qrY1); ctx.lineTo(qrX0, qrY1 - arm);
   ctx.stroke();
-  const qrImg = await loadImage(qr);
-  ctx.drawImage(qrImg, rightX - qrBox / 2 + qrPad, iconCy - qrBox / 2 + qrPad, qrBox - qrPad * 2, qrBox - qrPad * 2);
   ctx.restore();
+  const qrImg = await loadImage(qr);
+  const qrInset = qrBox * 0.06;
+  ctx.drawImage(qrImg, qrX0 + qrInset, qrY0 + qrInset, qrBox - qrInset * 2, qrBox - qrInset * 2);
 
   // Judul metode
   ctx.fillStyle = INK;
-  const methodTitleY = innerY + innerH * 0.695;
-  const mt = fitFont(ctx, opts.tapTitle, innerW * 0.34, W * 0.032, '800');
+  const methodTitleY = innerY + innerH * 0.700;
+  const titleLeftX = innerX + innerW * 0.2465;
+  const titleRightX = innerX + innerW * 0.7305;
+  const mt = fitFont(ctx, opts.tapTitle, innerW * 0.34, W * 0.034, '800');
   ctx.font = `800 ${mt}px "Plus Jakarta Sans", Arial, sans-serif`;
-  ctx.fillText(opts.tapTitle, leftX, methodTitleY);
-  ctx.fillText(opts.qrTitle, rightX, methodTitleY);
+  ctx.fillText(opts.tapTitle, titleLeftX, methodTitleY);
+  ctx.fillText(opts.qrTitle, titleRightX, methodTitleY);
 
   // Sub judul metode
   ctx.fillStyle = MUTED;
-  const subY = innerY + innerH * 0.735;
-  let ms = fitFont(ctx, opts.tapSub, innerW * 0.34, W * 0.022, '500');
+  const subY = innerY + innerH * 0.746;
+  let ms = fitFont(ctx, opts.tapSub, innerW * 0.34, W * 0.028, '500');
   ctx.font = `500 ${ms}px "Plus Jakarta Sans", Arial, sans-serif`;
-  ctx.fillText(opts.tapSub, leftX, subY);
-  ms = fitFont(ctx, opts.qrSub, innerW * 0.34, W * 0.022, '500');
+  const subLeftX = innerX + innerW * 0.257;
+  const subRightX = innerX + innerW * 0.725;
+  ctx.fillText(opts.tapSub, subLeftX, subY);
+  ms = fitFont(ctx, opts.qrSub, innerW * 0.34, W * 0.028, '500');
   ctx.font = `500 ${ms}px "Plus Jakarta Sans", Arial, sans-serif`;
-  ctx.fillText(opts.qrSub, rightX, subY);
+  ctx.fillText(opts.qrSub, subRightX, subY);
 
   // Garis horizontal pemisah
   ctx.strokeStyle = '#E0E0E0';
   ctx.lineWidth = Math.max(2, W * 0.0022);
   ctx.beginPath();
-  ctx.moveTo(innerX + innerW * 0.12, innerY + innerH * 0.795);
-  ctx.lineTo(innerX + innerW * 0.88, innerY + innerH * 0.795);
+  ctx.moveTo(innerX + innerW * 0.075, innerY + innerH * 0.808);
+  ctx.lineTo(innerX + innerW * 0.925, innerY + innerH * 0.808);
   ctx.stroke();
 
   // Ucapan terima kasih
   ctx.fillStyle = INK;
-  const t1 = fitFont(ctx, opts.thanksId, innerW * 0.86, W * 0.03, '800');
+  const t1 = fitFont(ctx, opts.thanksId, innerW * 0.88, W * 0.034, '800');
   ctx.font = `800 ${t1}px "Plus Jakarta Sans", Arial, sans-serif`;
-  ctx.fillText(opts.thanksId, cx, innerY + innerH * 0.855);
+  ctx.fillText(opts.thanksId, cx, innerY + innerH * 0.849);
 
   ctx.fillStyle = MUTED;
-  const t2 = fitFont(ctx, opts.thanksEn, innerW * 0.86, W * 0.022, '500');
+  const t2 = fitFont(ctx, opts.thanksEn, innerW * 0.88, W * 0.030, '500');
   ctx.font = `500 ${t2}px "Plus Jakarta Sans", Arial, sans-serif`;
-  ctx.fillText(opts.thanksEn, cx, innerY + innerH * 0.912);
+  ctx.fillText(opts.thanksEn, cx, innerY + innerH * 0.9095);
 
   // Footer band gelombang hijau -> biru (menutup border bawah, sesuai lampiran)
   const bandCenter = H * 0.933;
   const bandEdge = H * 0.85;
+  // Lampiran: band SOLID hijau (kiri) -> biru (kanan) dengan batas tajam di 64,5%.
   const grad = ctx.createLinearGradient(0, 0, W, 0);
   grad.addColorStop(0, GOOGLE_GREEN);
-  grad.addColorStop(0.5, '#1AA260');
+  grad.addColorStop(0.6445, GOOGLE_GREEN);
+  grad.addColorStop(0.6445, GOOGLE_BLUE);
   grad.addColorStop(1, GOOGLE_BLUE);
   const paintBand = () => {
     ctx.fillStyle = grad;
@@ -600,6 +622,8 @@ async function drawCr80(
   const bandTop = H * 0.82;
   const grad = ctx.createLinearGradient(0, 0, W, 0);
   grad.addColorStop(0, GOOGLE_GREEN);
+  grad.addColorStop(0.6445, GOOGLE_GREEN);
+  grad.addColorStop(0.6445, GOOGLE_BLUE);
   grad.addColorStop(1, GOOGLE_BLUE);
   ctx.fillStyle = grad;
   ctx.beginPath();
@@ -661,7 +685,7 @@ export async function downloadCardPng(card: CardLike, options: CardDesignOptions
 /*  Print helpers                                                              */
 /* -------------------------------------------------------------------------- */
 
-export function printImages(images: string[], perPage: number, title = 'Cetak Kartu TapUlasan', widthMm = 127) {
+export function printImages(images: string[], perPage: number, title = 'Cetak Kartu TapUlasan', widthMm = 100) {
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.left = '-10000px';
@@ -683,6 +707,13 @@ export function printImages(images: string[], perPage: number, title = 'Cetak Ka
     .map((src) => `<div class="card"><img src="${src}" alt="kartu" /></div>`)
     .join('');
 
+  // A4 dengan margin 8mm -> area cetak 194mm. Kolom dihitung agar ukuran fisik
+  // kartu TIDAK pernah menyusut (penting untuk standee 10 x 10 cm).
+  const GAP_MM = 6;
+  const CONTENT_MM = 194;
+  const maxCols = Math.max(1, Math.floor((CONTENT_MM + GAP_MM) / (widthMm + GAP_MM)));
+  const cols = Math.max(1, Math.min(perPage, maxCols));
+
   doc.open();
   doc.write(`<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
   <style>
@@ -690,9 +721,9 @@ export function printImages(images: string[], perPage: number, title = 'Cetak Ka
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: #fff; }
     body { font-family: Arial, sans-serif; }
-    .sheet { display: grid; grid-template-columns: repeat(${perPage === 1 ? 1 : 2}, 1fr); gap: 6mm; }
-    .card { break-inside: avoid; page-break-inside: avoid; display: flex; justify-content: center; }
-    .card img { width: ${widthMm}mm; max-width: 100%; height: auto; display: block; }
+    .sheet { display: grid; grid-template-columns: repeat(${cols}, ${widthMm}mm); gap: ${GAP_MM}mm; justify-content: center; }
+    .card { break-inside: avoid; page-break-inside: avoid; }
+    .card img { width: ${widthMm}mm; height: auto; display: block; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style></head><body><div class="sheet">${cardsHtml}</div></body></html>`);
   doc.close();
@@ -730,7 +761,8 @@ export function printImages(images: string[], perPage: number, title = 'Cetak Ka
 
 export function printSingleCard(card: CardLike, options: CardDesignOptions = {}) {
   return renderCardCanvas(card, options).then((canvas) => {
-    printImages([canvas.toDataURL('image/png')], 1, `Kartu ${card.card_id}`);
+    const format: CardFormat = options.format || DEFAULT_DESIGN.format;
+    printImages([canvas.toDataURL('image/png')], 1, `Kartu ${card.card_id}`, CARD_SIZES[format].widthMm);
   });
 }
 
@@ -746,124 +778,36 @@ interface PreviewProps {
   id?: string;
 }
 
-const NfcSvg: React.FC = () => (
-  <svg viewBox="0 0 100 100" fill="none" className="nfc-svg">
-    <g transform="translate(14, 8)">
-      <g transform="rotate(-10 32 45)">
-        <rect x="12" y="10" width="38" height="66" rx="6" stroke="#202124" strokeWidth="3" fill="#ffffff" />
-        <line x1="20" y1="16" x2="42" y2="16" stroke="#202124" strokeWidth="2.2" strokeLinecap="round" />
-        <line x1="26" y1="70" x2="36" y2="70" stroke="#202124" strokeWidth="2.2" strokeLinecap="round" />
-        <path d="M 46 22 A 12 12 0 0 1 54 34" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-        <path d="M 50 16 A 20 20 0 0 1 62 34" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-        <path d="M 54 10 A 28 28 0 0 1 70 34" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      </g>
-      <path d="M 2 44 C 8 36, 17 38, 20 44" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M 2 54 C 8 46, 17 48, 20 54" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M 4 64 C 10 56, 18 58, 21 64" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M 54 58 C 58 56, 64 62, 58 68 C 53 73, 46 72, 46 72" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M 4 65 C 8 76, 20 84, 40 84 C 52 84, 58 76, 58 68" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M 4 65 L 0 80" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-      <path d="M 26 84 L 20 95" stroke="#202124" strokeWidth="3" strokeLinecap="round" />
-    </g>
-  </svg>
-);
-
-const GoogleG: React.FC = () => (
-  <svg viewBox="0 0 24 24" className="g-logo">
-    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z" />
-    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
-    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.98 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
-    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
-  </svg>
-);
-
 export const CardPreview: React.FC<PreviewProps> = ({ card, options = {}, qrDataUrl, className = '', id }) => {
-  const o = {
-    ...DEFAULT_DESIGN,
-    businessName: card.business_name || '',
-    serial: card.card_id,
-    ...options,
-  };
+  const [src, setSrc] = useState<string>('');
+  const format = options.format || DEFAULT_DESIGN.format;
+  const key = JSON.stringify(options);
 
-  if (o.format === 'cr80') {
-    return (
-      <div
-        id={id}
-        className={`card-preview cr80 ${className}`}
-        style={{ background: 'conic-gradient(from 0deg, #DB4437, #4285F4, #0F9D58, #F4B400, #DB4437)' }}
-      >
-        <div className="card-preview-inner">
-          <div className="cr80-top">
-            <GoogleG />
-            <div className="cr80-head">
-              <div className="head-id">{o.headerId}</div>
-              <div className="head-en">{o.headerEn}</div>
-            </div>
-          </div>
-          <div className="stars">{'★★★★★'}</div>
-          <div className="cr80-body">
-            <div className="cr80-method">
-              <div className="nfc-icon"><NfcSvg /></div>
-              <div>
-                <div className="method-title">{o.tapTitle}</div>
-                <div className="method-sub">{o.tapSub}</div>
-              </div>
-            </div>
-            <div className="cr80-qr">
-              <div className="qr-box"><img src={qrDataUrl} alt="QR" /></div>
-              <div className="method-title">{o.qrTitle}</div>
-              <div className="method-sub">{o.qrSub}</div>
-            </div>
-          </div>
-          <div className="band">
-            <div className="thanks-id">{o.thanksId}</div>
-            <div className="thanks-en">{o.thanksEn}</div>
-            {o.showSerial && o.serial ? <div className="serial">{o.serial}</div> : null}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    let alive = true;
+    const run = async () => {
+      try {
+        const canvas = await renderCardCanvas(card, { ...options, qrDataUrl });
+        if (alive) setSrc(canvas.toDataURL('image/png'));
+      } catch {
+        /* biarkan preview kosong bila gagal */
+      }
+    };
+    const t = window.setTimeout(run, 50);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.card_id, card.business_name, card.gmaps_url, key, qrDataUrl]);
 
   return (
     <div
       id={id}
-      className={`card-preview square ${className}`}
-      style={{ background: 'conic-gradient(from 0deg, #DB4437, #4285F4, #0F9D58, #F4B400, #DB4437)' }}
+      className={`card-preview canvas-preview ${format} ${className}`}
+      data-format={format}
     >
-      <div className="card-preview-inner">
-        <GoogleG />
-
-        <div className="head-id">{o.headerId}</div>
-        <div className="head-en">{o.headerEn}</div>
-        <div className="stars">{'★★★★★'}</div>
-        {o.showBusinessName && o.businessName ? <div className="biz">{o.businessName}</div> : null}
-
-        <div className="methods">
-          <div className="method">
-            <div className="method-icon"><NfcSvg /></div>
-            <div className="method-title">{o.tapTitle}</div>
-            <div className="method-sub">{o.tapSub}</div>
-          </div>
-          <div className="method-divider">
-            <div className="or">- Atau -</div>
-          </div>
-          <div className="method">
-            <div className="method-icon qr"><img src={qrDataUrl} alt="QR" /></div>
-            <div className="method-title">{o.qrTitle}</div>
-            <div className="method-sub">{o.qrSub}</div>
-          </div>
-        </div>
-
-        <div className="thanks">
-          <div className="thanks-id">{o.thanksId}</div>
-          <div className="thanks-en">{o.thanksEn}</div>
-        </div>
-
-        <div className="band">
-          {o.showSerial && o.serial ? <div className="serial">{o.serial}</div> : null}
-        </div>
-      </div>
+      {src ? <img src={src} alt="Pratinjau kartu" /> : <div className="canvas-preview-skeleton" />}
     </div>
   );
 };
