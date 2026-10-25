@@ -72,11 +72,6 @@ interface StandeeRenderConfig {
   qrDataUrl: string;
 }
 
-// 300 DPI is the standard for sharp print / acrylic production.
-const PRINT_DPI = 300;
-const MM_PER_INCH = 25.4;
-const pxToMm = (px: number) => (px / PRINT_DPI) * MM_PER_INCH;
-
 // Turn any business name into a safe file name.
 const safeFileName = (value: string) =>
   (value || 'kartu')
@@ -375,6 +370,117 @@ const renderStandeeCanvas = async (config: StandeeRenderConfig): Promise<HTMLCan
   return canvas;
 };
 
+// -----------------------------------------------------------------------------
+// Physical card sizes in millimetres (matches the existing designs exactly).
+//   Standee Akrilik Meja = 8 x 11 cm   |   Kartu = 10 x 10 cm
+// -----------------------------------------------------------------------------
+const CARD_SIZES: Record<PrintFormat, { w: number; h: number; label: string; name: string }> = {
+  standee_acrylic: { w: 80, h: 110, label: '8 \u00d7 11 cm', name: 'Standee' },
+  card_cr80: { w: 100, h: 100, label: '10 \u00d7 10 cm', name: 'Kartu' },
+};
+
+const A4_W = 210; // mm
+const A4_H = 297; // mm
+
+// 'a4'      -> A4 portrait sheet holding 2 cards (with light cut guides)
+// 'sticker' -> exact card size page (8x11 cm / 10x10 cm), 1 card per page
+type PdfLayout = 'a4' | 'sticker';
+
+interface BuildPdfOptions {
+  layout: PdfLayout;
+  format: PrintFormat;
+  theme: PrintTheme;
+  headerLine1: string;
+  headerLine2: string;
+  tapText: string;
+  showBusinessName: boolean;
+}
+
+// Build a print-ready PDF from one or many cards.
+const buildCardsPdf = async (
+  cards: Card[],
+  options: BuildPdfOptions,
+  onProgress?: (done: number, total: number) => void
+): Promise<void> => {
+  if (cards.length === 0) return;
+
+  const { layout, format, theme, headerLine1, headerLine2, tapText, showBusinessName } = options;
+  const size = CARD_SIZES[format];
+  const isA4 = layout === 'a4';
+  const gap = 10; // mm between cards on an A4 sheet
+
+  // Decide the arrangement of the 2 cards on an A4 sheet (side-by-side if it fits,
+  // otherwise stacked vertically). Sticker mode is always 1 card per page.
+  const fitsSideBySide = size.w * 2 + gap * 3 <= A4_W;
+  const cols = isA4 ? (fitsSideBySide ? 2 : 1) : 1;
+  const perPage = isA4 ? 2 : 1;
+  const rows = perPage / cols;
+
+  const gridW = cols * size.w + (cols - 1) * gap;
+  const gridH = rows * size.h + (rows - 1) * gap;
+  const originX = isA4 ? (A4_W - gridW) / 2 : 0;
+  const originY = isA4 ? (A4_H - gridH) / 2 : 0;
+
+  const pageFormat: any = isA4 ? 'a4' : [size.w, size.h];
+  const pageOrientation: 'portrait' | 'landscape' = isA4
+    ? 'portrait'
+    : size.w > size.h
+      ? 'landscape'
+      : 'portrait';
+
+  let pdf: jsPDF | null = null;
+
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i];
+    const slot = i % perPage;
+
+    if (slot === 0) {
+      if (!pdf) {
+        pdf = new jsPDF({ unit: 'mm', format: pageFormat, orientation: pageOrientation, compress: true });
+      } else {
+        pdf.addPage(pageFormat, pageOrientation);
+      }
+    }
+
+    // `pdf` is guaranteed to exist here (created on the first slot of every page).
+    const doc = pdf as jsPDF;
+
+    const qrDataUrl = await generateQrForCard(card);
+    const canvas = await renderStandeeCanvas({
+      card,
+      format,
+      theme,
+      headerLine1,
+      headerLine2,
+      tapText,
+      serialText: card.card_id,
+      showBusinessName,
+      qrDataUrl,
+    });
+
+    const col = slot % cols;
+    const row = Math.floor(slot / cols);
+    const x = originX + col * (size.w + gap);
+    const y = originY + row * (size.h + gap);
+
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', x, y, size.w, size.h, undefined, 'FAST');
+
+    // Light cut guide on A4 sheets so the 2 cards are easy to cut apart.
+    if (isA4) {
+      doc.setDrawColor(200, 200, 200);
+      doc.setLineWidth(0.2);
+      doc.rect(x, y, size.w, size.h);
+    }
+
+    onProgress?.(i + 1, cards.length);
+  }
+
+  if (pdf) {
+    const mode = isA4 ? 'A4_2perLembar' : 'Sticker';
+    pdf.save(`TapUlasan_${size.name}_${mode}_${cards.length}kartu.pdf`);
+  }
+};
+
 export default function App() {
   // Navigation & View state:
   // 'landing' | 'client_setup' | 'admin_login' | 'admin_dashboard'
@@ -444,6 +550,7 @@ export default function App() {
   const [isBulkDownloading, setIsBulkDownloading] = useState(false);
   const [bulkDownloadProgress, setBulkDownloadProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkFormat, setBulkFormat] = useState<PrintFormat>('standee_acrylic');
+  const [printPdfLayout, setPrintPdfLayout] = useState<PdfLayout>('a4');
 
   // Interactive review growth calculator (Landing page)
   const [dailyCustomers, setDailyCustomers] = useState(60);
@@ -993,18 +1100,22 @@ export default function App() {
     }
   };
 
-  // Download the currently previewed design as a print-ready PDF (exact 300 DPI size).
-  const handleDownloadCardPdf = async () => {
+  // Download the currently previewed design as a print-ready PDF.
+  //   layout 'a4'      -> 1 card centered on an A4 sheet
+  //   layout 'sticker' -> exact size page (8x11 cm / 10x10 cm), ready to cut
+  const handleDownloadCardPdf = async (layout: PdfLayout = printPdfLayout) => {
     if (!selectedCardForPrint) return;
     setIsDownloadingImage(true);
     try {
-      const canvas = await renderStandeeCanvas(buildModalRenderConfig(selectedCardForPrint));
-      const wMm = pxToMm(canvas.width);
-      const hMm = pxToMm(canvas.height);
-      const orientation = wMm > hMm ? 'landscape' : 'portrait';
-      const pdf = new jsPDF({ unit: 'mm', format: [wMm, hMm], orientation, compress: true });
-      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, wMm, hMm, undefined, 'FAST');
-      pdf.save(`Standee_Google_Review_${safeFileName(selectedCardForPrint.business_name || selectedCardForPrint.card_id)}.pdf`);
+      await buildCardsPdf([selectedCardForPrint], {
+        layout,
+        format: printFormat,
+        theme: printDesignTheme,
+        headerLine1: printHeaderLine1,
+        headerLine2: printHeaderLine2,
+        tapText: printTapText,
+        showBusinessName: printShowBusinessName,
+      });
     } catch (err) {
       console.error('Error generating PDF:', err);
     } finally {
@@ -1030,44 +1141,28 @@ export default function App() {
     }
   };
 
-  // Download MANY selected cards as ONE multi-page PDF (1 card per page).
-  // Perfect for batch sticker printing and acrylic production.
-  const handleBulkDownloadPdf = async () => {
+  // Download MANY selected cards as ONE print-ready PDF.
+  //   layout 'a4'      -> A4 sheets, 2 cards per sheet (efficient printing)
+  //   layout 'sticker' -> exact size (8x11 cm / 10x10 cm), 1 card per page (ready to cut)
+  const handleBulkExport = async (layout: PdfLayout) => {
     const cards = adminCards.filter((c) => selectedCardIds.includes(c.card_id));
     if (cards.length === 0) return;
     setIsBulkDownloading(true);
     setBulkDownloadProgress({ done: 0, total: cards.length });
     try {
-      let pdf: jsPDF | null = null;
-      for (let i = 0; i < cards.length; i++) {
-        const card = cards[i];
-        const qrDataUrl = await generateQrForCard(card);
-        const canvas = await renderStandeeCanvas({
-          card,
+      await buildCardsPdf(
+        cards,
+        {
+          layout,
           format: bulkFormat,
           theme: 'blue_wave',
           headerLine1: 'MAKE OUR DAY,',
           headerLine2: 'LEAVE US A REVIEW!',
           tapText: 'Tap or Scan',
-          serialText: card.card_id,
           showBusinessName: true,
-          qrDataUrl,
-        });
-        const wMm = pxToMm(canvas.width);
-        const hMm = pxToMm(canvas.height);
-        const orientation = wMm > hMm ? 'landscape' : 'portrait';
-        if (!pdf) {
-          pdf = new jsPDF({ unit: 'mm', format: [wMm, hMm], orientation, compress: true });
-        } else {
-          pdf.addPage([wMm, hMm], orientation);
-        }
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, wMm, hMm, undefined, 'FAST');
-        setBulkDownloadProgress({ done: i + 1, total: cards.length });
-      }
-      if (pdf) {
-        const label = bulkFormat === 'card_cr80' ? 'Kartu_CR80' : 'Standee_Akrilik';
-        pdf.save(`TapUlasan_${label}_${cards.length}_Kartu.pdf`);
-      }
+        },
+        (done, total) => setBulkDownloadProgress({ done, total })
+      );
     } catch (err) {
       console.error('Error generating bulk PDF:', err);
     } finally {
@@ -2013,65 +2108,100 @@ export default function App() {
               </div>
             </div>
 
-            {/* Bulk PDF Download Action Bar (appears when cards are selected) */}
+            {/* ============================================================= */}
+            {/* MENU CETAK & EXPORT (muncul saat ada kartu dipilih)            */}
+            {/* ============================================================= */}
             {selectedCardIds.length > 0 && (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3 sm:p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 font-black text-sm shrink-0">
-                    {selectedCardIds.length}
+              <div className="sticky top-3 z-30 bg-[#0e121e]/95 backdrop-blur-md border border-amber-500/30 rounded-2xl p-3 sm:p-4 shadow-2xl shadow-black/50 ring-1 ring-black/20">
+                <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-3">
+
+                  {/* Left: count + size selector */}
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-base shrink-0 shadow-md shadow-amber-500/30">
+                        {selectedCardIds.length}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-white leading-tight">
+                          {selectedCardIds.length} kartu dipilih
+                        </div>
+                        <div className="text-[11px] text-slate-400 leading-tight">
+                          Pilih ukuran lalu download
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Size selector */}
+                    <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                      <button
+                        onClick={() => setBulkFormat('standee_acrylic')}
+                        disabled={isBulkDownloading}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer disabled:cursor-not-allowed ${
+                          bulkFormat === 'standee_acrylic' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Standee 8×11 cm
+                      </button>
+                      <button
+                        onClick={() => setBulkFormat('card_cr80')}
+                        disabled={isBulkDownloading}
+                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer disabled:cursor-not-allowed ${
+                          bulkFormat === 'card_cr80' ? 'bg-amber-500 text-slate-950 shadow-sm' : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Kartu 10×10 cm
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <div className="text-sm font-bold text-white">
-                      {selectedCardIds.length} kartu dipilih
-                    </div>
-                    <div className="text-[11px] text-slate-400 leading-tight">
-                      Diunduh jadi 1 file PDF (1 kartu per halaman) — siap untuk cetak sticker &amp; akrilik.
-                    </div>
+
+                  {/* Right: export actions */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleBulkExport('a4')}
+                      disabled={isBulkDownloading}
+                      title="Kertas A4, 2 kartu per lembar (hemat kertas)"
+                      className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                    >
+                      {isBulkDownloading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                      <span>
+                        {isBulkDownloading && bulkDownloadProgress
+                          ? `Memproses ${bulkDownloadProgress.done}/${bulkDownloadProgress.total}...`
+                          : 'PDF A4 (2/lembar)'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => handleBulkExport('sticker')}
+                      disabled={isBulkDownloading}
+                      title="Ukuran asli per kartu, siap cetak sticker / akrilik"
+                      className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-70 text-white font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                    >
+                      {isBulkDownloading ? <RefreshCw className="w-4 h-4 animate-spin text-amber-400" /> : <Download className="w-4 h-4 text-amber-400" />}
+                      <span>Sticker (ukuran asli)</span>
+                    </button>
+
+                    <button
+                      onClick={() => setSelectedCardIds([])}
+                      disabled={isBulkDownloading}
+                      title="Batalkan pilihan"
+                      className="px-3 py-2.5 bg-slate-800/60 hover:bg-rose-500/20 disabled:opacity-60 text-slate-300 hover:text-rose-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      <span className="hidden sm:inline">Batal</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* Output format toggle */}
-                  <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
-                    <button
-                      onClick={() => setBulkFormat('standee_acrylic')}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        bulkFormat === 'standee_acrylic' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Standee Akrilik
-                    </button>
-                    <button
-                      onClick={() => setBulkFormat('card_cr80')}
-                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${
-                        bulkFormat === 'card_cr80' ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                      }`}
-                    >
-                      Kartu CR80
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={handleBulkDownloadPdf}
-                    disabled={isBulkDownloading}
-                    className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-                  >
-                    {isBulkDownloading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
-                    <span>
-                      {isBulkDownloading && bulkDownloadProgress
-                        ? `Memproses ${bulkDownloadProgress.done}/${bulkDownloadProgress.total}...`
-                        : 'Download PDF Terpilih'}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setSelectedCardIds([])}
-                    disabled={isBulkDownloading}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                    <span>Batal</span>
-                  </button>
+                {/* Helper hint */}
+                <div className="mt-2.5 pt-2.5 border-t border-slate-800/70 flex flex-wrap items-center gap-x-4 gap-y-1 text-[10.5px] text-slate-400">
+                  <span className="flex items-center gap-1.5">
+                    <Layers className="w-3 h-3 text-amber-400" />
+                    <b className="text-slate-300">PDF A4</b> — 2 kartu per lembar A4 (ada garis potong)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <Download className="w-3 h-3 text-amber-400" />
+                    <b className="text-slate-300">Sticker</b> — 1 kartu per halaman, ukuran {CARD_SIZES[bulkFormat].label} (siap cetak)
+                  </span>
                 </div>
               </div>
             )}
@@ -2513,20 +2643,31 @@ export default function App() {
               {/* Action Buttons & Close */}
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={handleDownloadCardPdf}
+                  onClick={() => handleDownloadCardPdf('a4')}
                   disabled={isDownloadingImage}
+                  title="Kertas A4 (1 kartu per lembar)"
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-70 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
                 >
-                  {isDownloadingImage ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  <span>Download PDF</span>
+                  {isDownloadingImage ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                  <span>PDF A4</span>
+                </button>
+                <button
+                  onClick={() => handleDownloadCardPdf('sticker')}
+                  disabled={isDownloadingImage}
+                  title={`Ukuran asli ${CARD_SIZES[printFormat].label} (siap cetak sticker / akrilik)`}
+                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60"
+                >
+                  {isDownloadingImage ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" /> : <Download className="w-3.5 h-3.5 text-amber-400" />}
+                  <span>Sticker {CARD_SIZES[printFormat].label}</span>
                 </button>
                 <button
                   onClick={handleDownloadCardStandeeImage}
                   disabled={isDownloadingImage}
+                  title="File gambar PNG resolusi tinggi"
                   className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-60"
                 >
                   {isDownloadingImage ? <RefreshCw className="w-3.5 h-3.5 animate-spin text-amber-400" /> : <Download className="w-3.5 h-3.5 text-amber-400" />}
-                  <span>PNG 300 DPI</span>
+                  <span>PNG</span>
                 </button>
                 <button
                   onClick={() => setPrintCardModalOpen(false)}
@@ -2763,7 +2904,7 @@ export default function App() {
                   <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl space-y-1">
                     <div className="text-[11px] font-bold text-blue-300 flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>Standar Cetak Akrilik Presisi 300 DPI (PDF)</span>
+                      <span>Ukuran Cetak Presisi {CARD_SIZES[printFormat].label} (PDF)</span>
                     </div>
                     <p className="text-[10px] text-slate-300 leading-relaxed">
                       Lengkungan wave biru Google, logo resmi 4-warna Google, 5 bintang emas, dan barcode QR akan diunduh tajam tanpa pecah dalam file PDF siap cetak.
@@ -3012,7 +3153,7 @@ export default function App() {
                 </div>
 
                 <div className="no-print text-[11px] text-slate-400 mt-3 text-center">
-                  * Tampilan di atas adalah ukuran presisi 300 DPI yang diunduh sebagai file PDF (siap cetak sticker &amp; akrilik).
+                  * Ukuran cetak presisi: <b className="text-slate-300">{CARD_SIZES[printFormat].label}</b>. Unduh sebagai <b className="text-slate-300">PDF A4</b> (2 kartu per lembar) atau <b className="text-slate-300">Sticker</b> (ukuran asli, siap cetak sticker &amp; akrilik).
                 </div>
               </div>
 
