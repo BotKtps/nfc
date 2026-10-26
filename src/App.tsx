@@ -58,6 +58,26 @@ import {
   DEFAULT_TEMPLATE,
   type TemplateSettings,
 } from './cardDesign';
+// [FIX] Lapisan penyimpanan permanen & aman (validasi, dedupe, tombstone, batch unik)
+import {
+  CARDS_STORAGE_KEY,
+  loadCards,
+  saveCards,
+  upsertCard,
+  removeCard,
+  mergeCards,
+  generateUniqueBatch,
+  nextCardNumber,
+  normalizePrefix,
+  sumScanCount,
+  sanitizeCard,
+  normalizeCardId,
+  isValidHttpUrl,
+  dedupeCards,
+  hasCardStorage,
+  sameCardId,
+  type StoredCard,
+} from './storage';
 
 interface Card {
   card_id: string;
@@ -68,6 +88,29 @@ interface Card {
   created_at: string;
   updated_at: string;
 }
+
+// [FIX] Data contoh hanya dipakai saat aplikasi benar-benar pertama kali dijalankan.
+const SEED_CARDS: Card[] = [
+  {
+    card_id: 'CARD-001',
+    business_name: 'Ayam Geprek Kimo-Kimo',
+    gmaps_url:
+      'https://search.google.com/local/writereview?placeid=ChIJXxIA0RaB5i0ReoMyHzOBqH4&review=5',
+    is_active: true,
+    scan_count: 3,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    card_id: 'CARD-002',
+    business_name: null,
+    gmaps_url: null,
+    is_active: false,
+    scan_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
 
 export default function App() {
   // Navigation & View state:
@@ -83,10 +126,34 @@ export default function App() {
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
 
   // Admin Dashboard data (strictly hidden until authenticated)
-  const [adminCards, setAdminCards] = useState<Card[]>([]);
+  // [FIX] Dimuat langsung dari localStorage saat mount -> data tetap ada setelah refresh.
+  const [adminCards, setAdminCards] = useState<Card[]>(() => loadCards());
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminSearchTerm, setAdminSearchTerm] = useState('');
   const [adminFilter, setAdminFilter] = useState<'all' | 'active' | 'unclaimed'>('all');
+
+  /**
+   * [FIX] Satu-satunya cara menulis daftar kartu:
+   * bersihkan (sanitasi + dedupe) -> simpan ke localStorage -> update state.
+   * Semua pemanggilan localStorage.setItem('tapulasan_cards', ...) diganti ini.
+   */
+  const commitCards = React.useCallback((cards: Card[]): Card[] => {
+    const clean = dedupeCards(cards as StoredCard[]);
+    saveCards(clean);
+    setAdminCards(clean);
+    return clean;
+  }, []);
+
+  // [FIX] Sinkronisasi real-time antar tab: hapus/tambah di tab lain langsung terlihat.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === CARDS_STORAGE_KEY) {
+        setAdminCards(loadCards());
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   // Customer Card Setup / Activation state (accessible via secret link)
   const [setupCardIdInput, setSetupCardIdInput] = useState('');
@@ -227,10 +294,29 @@ export default function App() {
   // General copied helper state
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedKey(key);
-    setTimeout(() => setCopiedKey(null), 2500);
+  // [FIX] Clipboard: dukung fallback untuk browser/http non-secure + tangani error.
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        if (!ok) throw new Error('execCommand copy gagal');
+      }
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2500);
+    } catch (err) {
+      console.error('Copy gagal:', err);
+      alert('Gagal menyalin ke clipboard. Silakan salin manual.');
+    }
   };
 
   // Check URL on initial load for routing
@@ -260,281 +346,204 @@ export default function App() {
   }, []);
 
   // Customer Card Setup: Load Card Details
+  // [FIX] Reset seluruh state setup saat ganti kartu, validasi data, fallback lokal aman.
   const loadCustomerCard = async (cardIdToLoad: string) => {
-    const cardId = (cardIdToLoad || '').replace(/\/+$/, '').trim();
-    if (!cardId) return;
+    const cardId = normalizeCardId(cardIdToLoad);
+    if (!cardId) {
+      setSetupError('Masukkan ID kartu terlebih dahulu.');
+      return;
+    }
+
     setSetupCardLoading(true);
     setSetupError('');
+    setSetupSuccessResult(null);
+    setSetupQrDataUrl('');
+    setSetupSettingQrDataUrl('');
+    setSetupCardData(null);
+
+    const applyCard = async (card: Card) => {
+      setSetupCardData(card);
+      setSetupBusinessName(card.business_name || '');
+      setSetupMapsInput(card.gmaps_url || '');
+      const redirectUrl = `${window.location.origin}/r/${card.card_id}`;
+      const settingUrl = `${window.location.origin}/setup/${card.card_id}`;
+      try {
+        setSetupQrDataUrl(await QRCode.toDataURL(redirectUrl, {
+          width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' },
+        }));
+        setSetupSettingQrDataUrl(await QRCode.toDataURL(settingUrl, {
+          width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' },
+        }));
+      } catch (qrErr) {
+        console.error('Gagal membuat QR preview:', qrErr);
+      }
+    };
+
+    // 1) Tampilkan data lokal lebih dulu (persistensi tidak bergantung server).
+    const localMatch = loadCards().find((c) => sameCardId(c.card_id, cardId));
+    if (localMatch) await applyCard(localMatch);
+
     try {
       const res = await fetch(`/api/cards/${encodeURIComponent(cardId)}`);
       if (res.ok) {
-        const data = await res.json();
-        // Support both { card: Card } and Card directly
-        const card: Card = data?.card || (data?.card_id ? data : null);
-        if (!card || !card.card_id) {
-          throw new Error('Data kartu tidak valid dari server.');
+        const data = await res.json().catch(() => null);
+        const raw = data?.card || (data?.card_id ? data : null);
+        const clean = sanitizeCard(raw);
+        if (clean) {
+          const list = upsertCard(clean);
+          setAdminCards(list);
+          await applyCard(clean);
+        } else if (!localMatch) {
+          setSetupError('Data kartu dari server tidak valid.');
         }
-
-        setSetupCardData(card);
-        setSetupBusinessName(card.business_name || '');
-        setSetupMapsInput(card.gmaps_url || '');
-
-        const redirectUrl = `${window.location.origin}/r/${card.card_id}`;
-        const settingUrl = `${window.location.origin}/setup/${card.card_id}`;
-        try {
-          const qrUrl = await QRCode.toDataURL(redirectUrl, {
-            width: 380,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' },
-          });
-          setSetupQrDataUrl(qrUrl);
-
-          const settingQr = await QRCode.toDataURL(settingUrl, {
-            width: 380,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' },
-          });
-          setSetupSettingQrDataUrl(settingQr);
-        } catch (qrErr) {
-          console.error('Failed to generate preview QR code:', qrErr);
-        }
-        return;
+      } else if (!localMatch) {
+        const err = await res.json().catch(() => ({}));
+        setSetupError(err.error || `Kartu "${cardId}" tidak ditemukan dalam sistem.`);
       }
-
-      // Check local fallback if server returned 404
-      const stored = localStorage.getItem('tapulasan_cards');
-      if (stored) {
-        try {
-          const list: Card[] = JSON.parse(stored);
-          const match = list.find(c => c.card_id.toLowerCase() === cardId.toLowerCase());
-          if (match) {
-            setSetupCardData(match);
-            setSetupBusinessName(match.business_name || '');
-            setSetupMapsInput(match.gmaps_url || '');
-            const redirectUrl = `${window.location.origin}/r/${match.card_id}`;
-            const settingUrl = `${window.location.origin}/setup/${match.card_id}`;
-            const qrUrl = await QRCode.toDataURL(redirectUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-            setSetupQrDataUrl(qrUrl);
-            const settingQr = await QRCode.toDataURL(settingUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-            setSetupSettingQrDataUrl(settingQr);
-            return;
-          }
-        } catch (err) {}
+    } catch (e) {
+      // Offline / static deployment: tetap pakai data lokal bila ada.
+      if (!localMatch) {
+        console.error('Error loading card:', e);
+        setSetupError('Gagal memuat informasi kartu. Periksa koneksi atau ID kartu.');
       }
-
-      const err = await res.json().catch(() => ({}));
-      setSetupError(err.error || `Kartu "${cardId}" tidak ditemukan dalam sistem.`);
-      setSetupCardData(null);
-    } catch (e: any) {
-      // Local fallback on network error / static Vercel build
-      try {
-        const stored = localStorage.getItem('tapulasan_cards');
-        let fallbackCard: Card | null = null;
-        if (stored) {
-          const list: Card[] = JSON.parse(stored);
-          fallbackCard = list.find(c => c.card_id.toLowerCase() === cardId.toLowerCase()) || null;
-        }
-        if (!fallbackCard && (cardId.toUpperCase() === 'CARD-001' || cardId.toUpperCase() === 'CARD-002')) {
-          fallbackCard = {
-            card_id: cardId.toUpperCase(),
-            business_name: cardId.toUpperCase() === 'CARD-001' ? 'Ayam Geprek Kimo-Kimo' : null,
-            gmaps_url: cardId.toUpperCase() === 'CARD-001' ? 'https://search.google.com/local/writereview?placeid=ChIJXxIA0RaB5i0ReoMyHzOBqH4&review=5' : null,
-            is_active: cardId.toUpperCase() === 'CARD-001',
-            scan_count: cardId.toUpperCase() === 'CARD-001' ? 3 : 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-        }
-        if (fallbackCard) {
-          setSetupCardData(fallbackCard);
-          setSetupBusinessName(fallbackCard.business_name || '');
-          setSetupMapsInput(fallbackCard.gmaps_url || '');
-          const redirectUrl = `${window.location.origin}/r/${fallbackCard.card_id}`;
-          const settingUrl = `${window.location.origin}/setup/${fallbackCard.card_id}`;
-          const qrUrl = await QRCode.toDataURL(redirectUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-          setSetupQrDataUrl(qrUrl);
-          const settingQr = await QRCode.toDataURL(settingUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-          setSetupSettingQrDataUrl(settingQr);
-          return;
-        }
-      } catch (err) {}
-
-      console.error('Error loading card:', e);
-      setSetupError(
-        e?.message && typeof e.message === 'string' && !e.message.includes('object')
-          ? e.message
-          : 'Gagal memuat informasi kartu. Silakan periksa koneksi atau ID kartu.'
-      );
-      setSetupCardData(null);
     } finally {
       setSetupCardLoading(false);
     }
   };
 
   // Customer Card Setup: Save
+  // [FIX] Validasi input, simpan permanen ke localStorage, API hanya best-effort.
   const handleSaveCustomerSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!setupCardData) return;
-    setSavingSetup(true);
+
+    const businessName = setupBusinessName.trim();
+    const mapsInput = setupMapsInput.trim();
+
     setSetupError('');
+    if (!businessName) {
+      setSetupError('Nama bisnis wajib diisi.');
+      return;
+    }
+    if (!isValidHttpUrl(mapsInput)) {
+      setSetupError('Link Google Maps tidak valid. Gunakan URL yang diawali http:// atau https://.');
+      return;
+    }
+
+    setSavingSetup(true);
+
+    let reviewUrl = mapsInput;
+    let savedCard: Card = {
+      ...setupCardData,
+      business_name: businessName,
+      gmaps_url: mapsInput,
+      is_active: true,
+      updated_at: new Date().toISOString(),
+    };
 
     try {
       const res = await fetch(`/api/cards/${encodeURIComponent(setupCardData.card_id)}/setup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          business_name: setupBusinessName,
-          gmaps_url: setupMapsInput,
-        }),
+        body: JSON.stringify({ business_name: businessName, gmaps_url: mapsInput }),
       });
-
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const reviewUrl = data.review_url || data.card?.gmaps_url || `${window.location.origin}/r/${setupCardData.card_id}`;
-        const settingUrl = `${window.location.origin}/setup/${setupCardData.card_id}`;
-        setSetupSuccessResult({
-          card_id: setupCardData.card_id,
-          business_name: setupBusinessName,
-          review_url: reviewUrl,
-          setting_url: settingUrl,
-        });
-        if (data.card) {
-          setSetupCardData(data.card);
-        }
-        try {
-          const qrUrl = await QRCode.toDataURL(reviewUrl, {
-            width: 380,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' },
-          });
-          setSetupQrDataUrl(qrUrl);
-
-          const settingQr = await QRCode.toDataURL(settingUrl, {
-            width: 380,
-            margin: 2,
-            color: { dark: '#000000', light: '#ffffff' },
-          });
-          setSetupSettingQrDataUrl(settingQr);
-        } catch (qrErr) {
-          console.error('Error creating QR codes:', qrErr);
-        }
-      } else {
-        setSetupError(data.error || 'Gagal menyimpan konfigurasi kartu.');
-      }
-
-      // Sync to localStorage as backup
-      try {
-        const stored = localStorage.getItem('tapulasan_cards');
-        let list: Card[] = stored ? JSON.parse(stored) : [];
-        const idx = list.findIndex(c => c.card_id.toLowerCase() === setupCardData.card_id.toLowerCase());
-        const updatedCard: Card = {
+        reviewUrl = data.review_url || data.card?.gmaps_url || mapsInput;
+        const clean = sanitizeCard({
           ...setupCardData,
-          business_name: setupBusinessName,
-          gmaps_url: data.review_url || setupMapsInput,
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        };
-        if (idx >= 0) list[idx] = updatedCard;
-        else list.push(updatedCard);
-        localStorage.setItem('tapulasan_cards', JSON.stringify(list));
-      } catch (err) {}
-    } catch (e) {
-      // Offline / Static fallback saving
-      try {
-        const stored = localStorage.getItem('tapulasan_cards');
-        let list: Card[] = stored ? JSON.parse(stored) : [];
-        const idx = list.findIndex(c => c.card_id.toLowerCase() === setupCardData.card_id.toLowerCase());
-        const reviewUrl = setupMapsInput.startsWith('http')
-          ? setupMapsInput
-          : `https://search.google.com/local/writereview?q=${encodeURIComponent(setupBusinessName)}&review=5`;
-        const settingUrl = `${window.location.origin}/setup/${setupCardData.card_id}`;
-        const updatedCard: Card = {
-          ...setupCardData,
-          business_name: setupBusinessName,
+          ...(data.card || {}),
+          business_name: businessName,
           gmaps_url: reviewUrl,
           is_active: true,
           updated_at: new Date().toISOString(),
-        };
-        if (idx >= 0) list[idx] = updatedCard;
-        else list.push(updatedCard);
-        localStorage.setItem('tapulasan_cards', JSON.stringify(list));
-        setSetupCardData(updatedCard);
-        setSetupSuccessResult({
-          card_id: setupCardData.card_id,
-          business_name: setupBusinessName,
-          review_url: reviewUrl,
-          setting_url: settingUrl,
         });
-        const qrUrl = await QRCode.toDataURL(reviewUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-        setSetupQrDataUrl(qrUrl);
-        const settingQr = await QRCode.toDataURL(settingUrl, { width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' } });
-        setSetupSettingQrDataUrl(settingQr);
-      } catch (fallbackErr) {
-        setSetupError('Terjadi kesalahan jaringan saat menyimpan konfigurasi.');
+        if (clean) savedCard = clean;
+      } else if (res.status !== 404) {
+        console.warn('Server menolak setup, data tetap disimpan lokal:', data?.error);
       }
-    } finally {
-      setSavingSetup(false);
+    } catch (err) {
+      console.warn('Server tidak tersedia, menyimpan konfigurasi secara lokal:', err);
     }
+
+    // [FIX] Sumber kebenaran persistensi: localStorage. Selalu disimpan.
+    const list = upsertCard(savedCard as StoredCard);
+    setAdminCards(list);
+    setSetupCardData(savedCard);
+    setSetupSuccessResult({
+      card_id: savedCard.card_id,
+      business_name: businessName,
+      review_url: reviewUrl,
+      setting_url: `${window.location.origin}/setup/${savedCard.card_id}`,
+    });
+
+    try {
+      setSetupQrDataUrl(await QRCode.toDataURL(reviewUrl, {
+        width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' },
+      }));
+      setSetupSettingQrDataUrl(await QRCode.toDataURL(`${window.location.origin}/setup/${savedCard.card_id}`, {
+        width: 380, margin: 2, color: { dark: '#000000', light: '#ffffff' },
+      }));
+    } catch (qrErr) {
+      console.error('Gagal membuat QR setelah simpan:', qrErr);
+    }
+
+    setSavingSetup(false);
+  };
+
+  // [FIX] RESET FORM: mengembalikan isian ke data tersimpan, TIDAK menghapus storage.
+  const handleResetSetupForm = () => {
+    setSetupError('');
+    setSetupBusinessName(setupCardData?.business_name || '');
+    setSetupMapsInput(setupCardData?.gmaps_url || '');
   };
 
   // Admin Login
+  // [FIX] Login tidak lagi bergantung pada server. Data lokal selalu dimuat,
+  // dan respons server di-merge tanpa pernah menimpa data lokal dengan array kosong.
   const handleAdminLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminLoginLoading(true);
     setAdminLoginError('');
 
-    if (adminPin !== '*kewQkb:#sm') {
+    const pin = adminPin.trim();
+    if (pin !== '*kewQkb:#sm') {
       setAdminLoginError('Kunci PIN Pengelola tidak sesuai. Akses ditolak.');
       setAdminLoginLoading(false);
       return;
     }
 
-    try {
-      const res = await fetch('/api/cards', {
-        headers: { 'x-admin-pin': adminPin },
-      });
+    // Muat data lokal lebih dulu agar tidak pernah "hilang" setelah refresh.
+    let localCards = loadCards();
 
-      if (res.ok) {
-        const data = await res.json();
-        sessionStorage.setItem('tapulasan_admin_pin', adminPin);
-        setIsAdminAuthenticated(true);
-        setAdminCards(data.cards || []);
-        localStorage.setItem('tapulasan_cards', JSON.stringify(data.cards || []));
-        setCurrentView('admin_dashboard');
-      } else {
-        setAdminLoginError('Otorisasi gagal pada server backend.');
-      }
-    } catch (e) {
-      // Local fallback for static Vercel deployment / offline testing
-      const stored = localStorage.getItem('tapulasan_cards');
-      const list: Card[] = stored ? JSON.parse(stored) : [
-        {
-          card_id: 'CARD-001',
-          business_name: 'Ayam Geprek Kimo-Kimo',
-          gmaps_url: 'https://search.google.com/local/writereview?placeid=ChIJXxIA0RaB5i0ReoMyHzOBqH4&review=5',
-          is_active: true,
-          scan_count: 3,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          card_id: 'CARD-002',
-          business_name: null,
-          gmaps_url: null,
-          is_active: false,
-          scan_count: 0,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      ];
-      sessionStorage.setItem('tapulasan_admin_pin', adminPin);
-      setIsAdminAuthenticated(true);
-      setAdminCards(list);
-      localStorage.setItem('tapulasan_cards', JSON.stringify(list));
-      setCurrentView('admin_dashboard');
-    } finally {
-      setAdminLoginLoading(false);
+    // Pertama kali aplikasi dipakai: isi contoh kartu (hanya jika storage belum pernah ada).
+    if (localCards.length === 0 && !hasCardStorage()) {
+      localCards = commitCards(SEED_CARDS);
+    } else {
+      setAdminCards(localCards);
     }
+
+    try {
+      const res = await fetch('/api/cards', { headers: { 'x-admin-pin': pin } });
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && Array.isArray(data.cards)) {
+          commitCards(mergeCards(localCards, data.cards));
+        }
+      } else if (res.status === 401) {
+        setAdminLoginError('Otorisasi gagal pada server backend.');
+        setAdminLoginLoading(false);
+        return;
+      }
+      // Respons non-OK lain (404/500/HTML) -> tetap login dengan data lokal.
+    } catch (err) {
+      console.warn('Server tidak tersedia, login memakai data lokal:', err);
+    }
+
+    sessionStorage.setItem('tapulasan_admin_pin', pin);
+    setIsAdminAuthenticated(true);
+    setCurrentView('admin_dashboard');
+    setAdminLoginLoading(false);
   };
 
   // Admin Logout
@@ -547,142 +556,142 @@ export default function App() {
   };
 
   // Fetch Admin Cards
+  // [FIX] Fallback ke localStorage pada SEMUA kegagalan (bukan hanya network error).
   const fetchAdminCards = async (pinToUse?: string) => {
     const pin = pinToUse || adminPin || sessionStorage.getItem('tapulasan_admin_pin') || '';
-    if (!pin) return;
+    const localCards = loadCards();
+    if (!pin) {
+      setAdminCards(localCards);
+      return;
+    }
 
     setAdminLoading(true);
     try {
-      const res = await fetch('/api/cards', {
-        headers: { 'x-admin-pin': pin },
-      });
-
+      const res = await fetch('/api/cards', { headers: { 'x-admin-pin': pin } });
       if (res.ok) {
-        const data = await res.json();
-        setAdminCards(data.cards || []);
-        localStorage.setItem('tapulasan_cards', JSON.stringify(data.cards || []));
-      } else {
-        if (res.status === 401) {
-          handleAdminLogout();
+        const data = await res.json().catch(() => null);
+        if (data && Array.isArray(data.cards)) {
+          commitCards(mergeCards(localCards, data.cards));
+        } else {
+          setAdminCards(localCards);
         }
+      } else if (res.status === 401) {
+        handleAdminLogout();
+      } else {
+        setAdminCards(localCards);
       }
-    } catch (e) {
-      console.error('Failed to fetch admin cards, using local storage backup:', e);
-      const stored = localStorage.getItem('tapulasan_cards');
-      if (stored) {
-        try {
-          setAdminCards(JSON.parse(stored));
-        } catch (err) {}
-      }
+    } catch (err) {
+      console.warn('Gagal fetch admin cards, memakai data lokal:', err);
+      setAdminCards(localCards);
     } finally {
       setAdminLoading(false);
     }
   };
 
   // Admin: Generate Batch Cards
+  // [FIX] ID unik berbasis nomor terbesar (bukan jumlah kartu) + validasi input.
   const handleGenerateBatch = async (e: React.FormEvent) => {
     e.preventDefault();
     const pin = adminPin || sessionStorage.getItem('tapulasan_admin_pin') || '';
-    if (!pin) return;
+    if (!pin) {
+      alert('Sesi admin tidak valid. Silakan login ulang.');
+      return;
+    }
+
+    const count = Math.floor(Number(batchCount));
+    if (!Number.isFinite(count) || count < 1 || count > 100) {
+      alert('Jumlah kartu harus antara 1 sampai 100.');
+      return;
+    }
+    const prefix = normalizePrefix(batchPrefix);
 
     setGeneratingBatch(true);
     try {
-      const res = await fetch('/api/cards/batch', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-admin-pin': pin,
-        },
-        body: JSON.stringify({
-          prefix: batchPrefix,
-          count: Number(batchCount),
-          start: adminCards.length + 1,
-        }),
-      });
-
-      if (res.ok) {
-        setBatchModalOpen(false);
-        await fetchAdminCards(pin);
-      } else {
-        throw new Error('API failed');
-      }
-    } catch (e) {
-      // Local fallback for batch generation
-      const now = new Date().toISOString();
-      const newItems: Card[] = [];
-      const prefix = batchPrefix || 'CARD';
-      const count = Number(batchCount) || 10;
-      for (let i = 0; i < count; i++) {
-        const num = adminCards.length + 1 + i;
-        const paddedNum = String(num).padStart(3, '0');
-        newItems.push({
-          card_id: `${prefix.toUpperCase()}-${paddedNum}`,
-          business_name: null,
-          gmaps_url: null,
-          is_active: false,
-          scan_count: 0,
-          created_at: now,
-          updated_at: now,
-        });
-      }
-      const updatedList = [...adminCards, ...newItems];
-      setAdminCards(updatedList);
-      localStorage.setItem('tapulasan_cards', JSON.stringify(updatedList));
+      // [FIX] Simpan batch secara lokal lebih dulu supaya tidak hilang bila API gagal.
+      const local = loadCards();
+      const start = nextCardNumber(local, prefix);
+      const newItems = generateUniqueBatch(prefix, count, local, start);
+      commitCards(mergeCards(local, newItems));
       setBatchModalOpen(false);
+
+      try {
+        const res = await fetch('/api/cards/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-pin': pin },
+          body: JSON.stringify({ prefix, count, start }),
+        });
+        if (res.ok) await fetchAdminCards(pin);
+      } catch (apiErr) {
+        console.warn('Batch API gagal, batch tetap tersimpan lokal:', apiErr);
+      }
     } finally {
       setGeneratingBatch(false);
     }
   };
 
-  // Admin: Reset Card
+  // Admin: Reset Card (mengosongkan DATA kartu — bukan sekadar form)
+  // [FIX] Konfirmasi jelas + update localStorage lebih dulu.
   const handleResetCard = async (cardId: string) => {
     const pin = adminPin || sessionStorage.getItem('tapulasan_admin_pin') || '';
-    if (!pin) return;
-    if (!confirm(`Yakin ingin mereset kartu ${cardId} ke kondisi belum diatur?`)) return;
+    if (!pin) {
+      alert('Sesi admin tidak valid. Silakan login ulang.');
+      return;
+    }
+    if (!window.confirm(
+      `Reset data kartu ${cardId}?\n\nNama bisnis dan link Google Maps akan dikosongkan sehingga kartu kembali berstatus "Belum Diatur".\n\nData kartu LAIN tidak terpengaruh. Tindakan ini tidak dapat dibatalkan.`
+    )) return;
+
+    const now = new Date().toISOString();
+    const next = loadCards().map((c) =>
+      sameCardId(c.card_id, cardId)
+        ? { ...c, business_name: null, gmaps_url: null, is_active: false, updated_at: now }
+        : c
+    );
+    commitCards(next);
 
     try {
-      const res = await fetch(`/api/cards/${cardId}/reset`, {
+      const res = await fetch(`/api/cards/${encodeURIComponent(cardId)}/reset`, {
         method: 'POST',
         headers: { 'x-admin-pin': pin },
       });
-
-      if (res.ok) {
-        await fetchAdminCards(pin);
-      } else {
-        throw new Error('Reset API error');
+      if (!res.ok && res.status !== 404) {
+        console.warn('Reset API gagal, data lokal sudah direset.');
       }
-    } catch (e) {
-      const updatedList = adminCards.map(c => 
-        c.card_id === cardId 
-          ? { ...c, business_name: null, gmaps_url: null, is_active: false, scan_count: 0, updated_at: new Date().toISOString() }
-          : c
-      );
-      setAdminCards(updatedList);
-      localStorage.setItem('tapulasan_cards', JSON.stringify(updatedList));
+    } catch (err) {
+      console.warn('Reset API tidak tersedia, data lokal sudah direset:', err);
     }
   };
 
   // Admin: Delete Card
+  // [FIX] Hanya menghapus ID target, konfirmasi eksplisit, hapus dari storage real-time.
   const handleDeleteCard = async (cardId: string) => {
     const pin = adminPin || sessionStorage.getItem('tapulasan_admin_pin') || '';
-    if (!pin) return;
-    if (!confirm(`Hapus permanen kartu ${cardId} dari database?`)) return;
+    if (!pin) {
+      alert('Sesi admin tidak valid. Silakan login ulang.');
+      return;
+    }
+
+    const target = loadCards().find((c) => sameCardId(c.card_id, cardId));
+    const label = target?.business_name ? `${cardId} (${target.business_name})` : cardId;
+    if (!window.confirm(
+      `Apakah Anda yakin ingin menghapus kartu ${label}?\n\nKartu ini akan dihapus PERMANEN dari penyimpanan. Tindakan ini tidak dapat dibatalkan dan TIDAK memengaruhi kartu lain.`
+    )) return;
+
+    // [FIX] Hapus lokal lebih dulu (sumber persistensi utama) + tombstone.
+    const next = removeCard(cardId);
+    setAdminCards(next);
+    setMassSelectedIds((prev) => prev.filter((id) => !sameCardId(id, cardId)));
 
     try {
-      const res = await fetch(`/api/cards/${cardId}`, {
+      const res = await fetch(`/api/cards/${encodeURIComponent(cardId)}`, {
         method: 'DELETE',
         headers: { 'x-admin-pin': pin },
       });
-
-      if (res.ok) {
-        await fetchAdminCards(pin);
-      } else {
-        throw new Error('Delete API error');
+      if (!res.ok && res.status !== 404) {
+        console.warn('Delete API gagal, kartu tetap terhapus dari penyimpanan lokal.');
       }
-    } catch (e) {
-      const updatedList = adminCards.filter(c => c.card_id !== cardId);
-      setAdminCards(updatedList);
-      localStorage.setItem('tapulasan_cards', JSON.stringify(updatedList));
+    } catch (err) {
+      console.warn('Delete API tidak tersedia, kartu tetap terhapus lokal:', err);
     }
   };
 
@@ -846,10 +855,12 @@ export default function App() {
   };
 
   // Filtered admin cards
+  // [FIX] Guard terhadap card_id / business_name null (data korup tidak bikin crash).
   const filteredAdminCards = adminCards.filter((card) => {
-    const matchesSearch =
-      card.card_id.toLowerCase().includes(adminSearchTerm.toLowerCase()) ||
-      (card.business_name && card.business_name.toLowerCase().includes(adminSearchTerm.toLowerCase()));
+    const term = adminSearchTerm.trim().toLowerCase();
+    const id = (card.card_id || '').toLowerCase();
+    const name = (card.business_name || '').toLowerCase();
+    const matchesSearch = !term || id.includes(term) || name.includes(term);
 
     if (adminFilter === 'active') return matchesSearch && card.is_active;
     if (adminFilter === 'unclaimed') return matchesSearch && !card.is_active;
@@ -1570,11 +1581,22 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                  {/* [FIX] Reset Form: hanya mengembalikan isian ke data tersimpan. */}
+                  <button
+                    type="button"
+                    onClick={handleResetSetupForm}
+                    disabled={savingSetup}
+                    className="w-full sm:w-auto px-4 py-3 bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 font-semibold text-xs rounded-xl border border-slate-700 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    title="Kembalikan isian ke data yang tersimpan (tidak menghapus data)"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Reset Form
+                  </button>
                   <button
                     type="submit"
                     disabled={savingSetup}
-                    className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
+                    className="flex-1 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-98"
                   >
                     {savingSetup ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                     Simpan & Aktifkan Kartu
@@ -1586,7 +1608,13 @@ export default function App() {
                 <p className="text-xs text-slate-400">
                   Masukkan ID kartu yang tertera pada fisik kartu NFC Anda:
                 </p>
-                <div className="flex gap-2 max-w-xs mx-auto">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    loadCustomerCard(setupCardIdInput);
+                  }}
+                  className="flex gap-2 max-w-xs mx-auto"
+                >
                   <input
                     type="text"
                     placeholder="CARD-001"
@@ -1595,12 +1623,12 @@ export default function App() {
                     className="w-full bg-[#121624] border border-slate-700 rounded-xl px-3 py-2 text-xs text-white font-mono uppercase"
                   />
                   <button
-                    onClick={() => loadCustomerCard(setupCardIdInput)}
+                    type="submit"
                     className="px-4 py-2 bg-amber-500 text-slate-950 font-bold text-xs rounded-xl cursor-pointer"
                   >
                     Cari
                   </button>
-                </div>
+                </form>
                 {setupError && <p className="text-xs text-rose-400">{setupError}</p>}
               </div>
             )}
@@ -1741,7 +1769,7 @@ export default function App() {
               <div className="bg-[#0e121e] border border-slate-800 p-4 rounded-xl">
                 <div className="text-xs text-amber-400 font-medium">Total Scan Tap</div>
                 <div className="text-2xl font-black text-amber-400 mt-1">
-                  {adminCards.reduce((sum, c) => sum + c.scan_count, 0)}
+                  {sumScanCount(adminCards)}
                 </div>
               </div>
             </div>
@@ -2312,6 +2340,8 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => {
+                            // [FIX] Konfirmasi sebelum menghapus template (tindakan destruktif).
+                            if (!window.confirm('Hapus gambar template? Pengaturan template akan direset.')) return;
                             setTemplateSettings(DEFAULT_TEMPLATE);
                             setTemplateMode(false);
                           }}

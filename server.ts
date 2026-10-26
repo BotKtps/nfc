@@ -71,8 +71,11 @@ function loadCards(): Map<string, Card> {
       if (fs.existsSync(p)) {
         const data = fs.readFileSync(p, 'utf-8');
         const arr: Card[] = JSON.parse(data);
-        if (Array.isArray(arr) && arr.length > 0) {
-          return new Map(arr.map(c => [c.card_id, c]));
+        // [FIX] File yang valid (termasuk array kosong) adalah sumber kebenaran.
+        // Sebelumnya array kosong diabaikan sehingga kartu default "hidup lagi"
+        // setelah user menghapus semua kartu dan server restart.
+        if (Array.isArray(arr)) {
+          return new Map(arr.filter((c) => c && c.card_id).map((c) => [c.card_id, c]));
         }
       }
     } catch (e) {
@@ -543,10 +546,19 @@ app.post('/api/cards/batch', checkAdminAuth, (req, res) => {
   const now = new Date().toISOString();
   const created: Card[] = [];
 
-  for (let i = 0; i < Number(count); i++) {
-    const num = Number(start) + i;
+  const safePrefix = String(prefix).trim().toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'CARD';
+  const safeCount = Math.max(0, Math.min(500, Math.floor(Number(count) || 0)));
+  let num = Math.max(1, Math.floor(Number(start) || 1));
+  let guard = 0;
+
+  // [FIX] Lanjutkan penomoran sampai benar-benar dapat `safeCount` kartu baru.
+  // Sebelumnya loop berhenti setelah `count` iterasi sehingga ID yang sudah ada
+  // (mis. akibat penghapusan) membuat jumlah kartu yang dibuat lebih sedikit.
+  while (created.length < safeCount && guard < safeCount * 20 + 1000) {
+    guard++;
     const paddedNum = String(num).padStart(3, '0');
-    const cardId = `${prefix.toUpperCase()}-${paddedNum}`;
+    const cardId = `${safePrefix}-${paddedNum}`;
+    num++;
 
     if (!cardsDB.has(cardId)) {
       const newCard: Card = {
